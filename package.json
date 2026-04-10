@@ -10,6 +10,7 @@
     "db:migrate": "wrangler d1 migrations apply y-gem-db --remote"
   },
   "dependencies": {
+    "@google/genai": "^1.49.0",
     "@hono/oauth-providers": "^0.8.5",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.12"

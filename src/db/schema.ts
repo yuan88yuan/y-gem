@@ -21,3 +21,12 @@ export const apiTokens = sqliteTable('api_tokens', {
   description: text('description'),
   createdAt: integer('created_at', { mode: 'number' }).notNull(),
 });
+
+export const aiBots = sqliteTable('ai_bots', {
+  id: integer('id', { mode: 'number' }).primaryKey({ autoIncrement: true }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  modelName: text('model_name').notNull(),
+  systemPrompt: text('system_prompt'),
+  createdAt: integer('created_at', { mode: 'number' }).notNull(),
+});
