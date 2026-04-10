@@ -1,0 +1,21 @@
+{
+  "name": "my-app",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy --minify",
+    "build": "npm run cf-typegen && tsc --noEmit",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings"
+  },
+  "dependencies": {
+    "@hono/oauth-providers": "^0.8.5",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.12"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^6.0.2",
+    "wrangler": "^4.4.0"
+  }
+}
