@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { html } from 'hono/html'
-import { getSignedCookie, setSignedCookie, deleteCookie } from 'hono/cookie'
+import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
+import { sign, verify } from 'hono/jwt'
 import { drizzle } from 'drizzle-orm/d1'
 import { eq } from 'drizzle-orm'
 import { googleAuth } from '@hono/oauth-providers/google'
@@ -43,7 +44,8 @@ app.get('/auth/google', async (c) => {
     dbUser = result
   }
 
-  await setSignedCookie(c, 'session', String(dbUser.id), c.env.COOKIE_SECRET)
+  const token = await sign({ id: dbUser.id, exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7 }, c.env.COOKIE_SECRET)
+  setCookie(c, 'session', token)
 
   return c.redirect('/')
 })
@@ -56,13 +58,21 @@ app.get('/logout', (c) => {
 app.get('/', async (c) => {
   const db = drizzle(c.env.DB)
 
-  const sessionId = await getSignedCookie(c, c.env.COOKIE_SECRET, 'session')
+  const sessionId = getCookie(c, 'session')
 
   if (sessionId) {
-    const userId = parseInt(sessionId, 10)
-    const dbUser = await db.select().from(users).where(eq(users.id, userId)).get()
+    let userId: number | undefined
+    try {
+      const payload = await verify(sessionId, c.env.COOKIE_SECRET, 'HS256')
+      userId = payload.id as number
+    } catch (e) {
+      // Invalid token
+    }
 
-    if (dbUser) {
+    if (userId !== undefined) {
+      const dbUser = await db.select().from(users).where(eq(users.id, userId)).get()
+
+      if (dbUser) {
       return c.html(html`
         <!DOCTYPE html>
         <html>
@@ -79,6 +89,7 @@ app.get('/', async (c) => {
         </body>
         </html>
       `)
+      }
     }
   }
 
