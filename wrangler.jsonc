@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "my-app",
+  "name": "y-gem",
   "main": "src/index.ts",
   "compatibility_date": "2026-04-10",
   // "compatibility_flags": [
@@ -24,7 +24,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "chat-db",
+      "database_name": "y-gem-db",
       "database_id": "xxxx-xxxx-xxxx"
     }
   ],
