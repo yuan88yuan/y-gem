@@ -5,7 +5,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --minify",
     "build": "npm run cf-typegen && tsc --noEmit",
-    "cf-typegen": "wrangler types --env-interface CloudflareBindings"
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "db:migration": "drizzle-kit generate"
   },
   "dependencies": {
     "@hono/oauth-providers": "^0.8.5",
@@ -16,6 +17,6 @@
     "@types/node": "^25.6.0",
     "drizzle-kit": "^0.31.10",
     "typescript": "^6.0.2",
-    "wrangler": "^4.4.0"
+    "wrangler": "^4.81.1"
   }
 }

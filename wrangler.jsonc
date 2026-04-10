@@ -25,7 +25,8 @@
     {
       "binding": "DB",
       "database_name": "y-gem-db",
-      "database_id": "d13fc6cb-6a29-4ad6-8a85-6d7f81708778"
+      "database_id": "d13fc6cb-6a29-4ad6-8a85-6d7f81708778",
+      "migrations_dir": "drizzle"
     }
   ],
   // "ai": {
