@@ -281,6 +281,140 @@ app.post('/ai-bots/:id/chat', async (c) => {
   }
 })
 
+app.get('/ai-bots/:id/edit', async (c) => {
+  const id = parseInt(c.req.param('id'), 10)
+  if (isNaN(id)) return c.redirect('/')
+
+  const sessionCookie = getCookie(c, 'session')
+  if (!sessionCookie) return c.redirect('/')
+
+  try {
+    const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
+    const sessionId = payload.id as string
+    const db = drizzle(c.env.DB)
+
+    const currentSession = await db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+    if (!currentSession || currentSession.expiresAt <= Math.floor(Date.now() / 1000)) {
+      return c.redirect('/')
+    }
+
+    const bot = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
+    if (!bot || bot.userId !== currentSession.userId) {
+      return c.redirect('/')
+    }
+
+    return c.html(html`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Edit Bot - y-gem</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script>
+          tailwind.config = {
+            theme: {
+              extend: {
+                colors: {
+                  primary: '#2563eb',
+                  'primary-hover': '#1d4ed8',
+                }
+              }
+            }
+          }
+        </script>
+        <style>
+          input[type="text"], textarea {
+            padding: 0.5rem;
+            border: 1px solid #d1d5db;
+          }
+          input[type="text"]:focus, textarea:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 1px #3b82f6;
+          }
+        </style>
+      </head>
+      <body class="bg-gray-100 min-h-screen font-sans text-gray-900">
+        <nav class="bg-white shadow-sm border-b border-gray-200">
+          <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+              <div class="flex items-center">
+                <a href="/" class="text-xl font-bold text-primary hover:underline">y-gem</a>
+              </div>
+            </div>
+          </div>
+        </nav>
+
+        <main class="max-w-3xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+          <div class="bg-white shadow rounded-xl overflow-hidden border border-gray-100">
+            <div class="px-6 py-5 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+              <h2 class="text-lg font-semibold text-gray-800">Edit Bot: ${bot.name}</h2>
+            </div>
+            <div class="p-6">
+              <form action="/ai-bots/${bot.id}/edit" method="POST" class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                  <input type="text" name="name" value="${bot.name}" required class="w-full rounded-md shadow-sm sm:text-sm" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                  <input type="text" name="modelName" value="${bot.modelName}" required class="w-full rounded-md shadow-sm sm:text-sm" />
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">System Prompt</label>
+                  <textarea name="systemPrompt" rows="5" class="w-full rounded-md shadow-sm sm:text-sm">${bot.systemPrompt || ''}</textarea>
+                </div>
+                <div class="flex items-center gap-4">
+                  <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors">
+                    Save Changes
+                  </button>
+                  <a href="/" class="text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors">Cancel</a>
+                </div>
+              </form>
+            </div>
+          </div>
+        </main>
+      </body>
+      </html>
+    `)
+  } catch (e) {
+    return c.redirect('/')
+  }
+})
+
+app.post('/ai-bots/:id/edit', async (c) => {
+  const id = parseInt(c.req.param('id'), 10)
+  if (isNaN(id)) return c.redirect('/')
+
+  const sessionCookie = getCookie(c, 'session')
+  if (sessionCookie) {
+    try {
+      const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
+      const sessionId = payload.id as string
+      const db = drizzle(c.env.DB)
+
+      const currentSession = await db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+      if (currentSession && currentSession.expiresAt > Math.floor(Date.now() / 1000)) {
+        const botToEdit = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
+        if (botToEdit && botToEdit.userId === currentSession.userId) {
+          const body = await c.req.parseBody()
+          const name = (body['name'] as string) || 'Unnamed Bot'
+          const modelName = (body['modelName'] as string) || 'gemini-3-flash-preview'
+          const systemPrompt = (body['systemPrompt'] as string) || ''
+
+          await db.update(aiBots)
+            .set({ name, modelName, systemPrompt })
+            .where(eq(aiBots.id, id))
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+  return c.redirect('/')
+})
+
 app.get('/ai-bots/:id/chat', async (c) => {
   const id = parseInt(c.req.param('id'), 10)
   if (isNaN(id)) return c.redirect('/')
@@ -869,9 +1003,12 @@ app.get('/', async (c) => {
                                 <p class="text-sm text-gray-500 mt-1">Model: <span class="font-mono bg-gray-100 px-1 py-0.5 rounded text-xs">${b.modelName}</span></p>
                                 <p class="text-xs text-gray-400 mt-1">Created: ${new Date(b.createdAt * 1000).toLocaleString()}</p>
                               </div>
-                              <form action="/ai-bots/${b.id}/delete" method="POST" class="opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button type="submit" class="text-sm text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-md font-medium transition-colors">Delete</button>
-                              </form>
+                              <div class="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <a href="/ai-bots/${b.id}/edit" class="text-sm text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-md font-medium transition-colors">Edit</a>
+                                <form action="/ai-bots/${b.id}/delete" method="POST" class="m-0">
+                                  <button type="submit" class="text-sm text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-md font-medium transition-colors">Delete</button>
+                                </form>
+                              </div>
                             </li>
                           `)}
                         </ul>
