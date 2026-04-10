@@ -342,6 +342,7 @@ app.get('/ai-bots/:id/chat', async (c) => {
             display: flex;
             flex-direction: column;
             height: 100vh;
+            height: 100dvh;
             overflow: hidden;
           }
 
@@ -350,6 +351,7 @@ app.get('/ai-bots/:id/chat', async (c) => {
             align-items: center;
             justify-content: space-between;
             padding: 1rem 1.5rem;
+            padding-top: calc(1rem + env(safe-area-inset-top));
             background-color: var(--chat-bg);
             border-bottom: 1px solid var(--border-color);
             box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -360,6 +362,17 @@ app.get('/ai-bots/:id/chat', async (c) => {
             font-size: 1.25rem;
             font-weight: 600;
             color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            min-width: 0;
+            justify-content: center;
+            flex: 1;
+          }
+
+          .header .bot-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
           }
 
           .header .model-name {
@@ -370,6 +383,8 @@ app.get('/ai-bots/:id/chat', async (c) => {
             background: #e5e7eb;
             padding: 0.125rem 0.5rem;
             border-radius: 9999px;
+            flex-shrink: 0;
+            white-space: nowrap;
           }
 
           .back-link {
@@ -380,6 +395,8 @@ app.get('/ai-bots/:id/chat', async (c) => {
             align-items: center;
             gap: 0.25rem;
             transition: color 0.2s;
+            width: 60px;
+            flex-shrink: 0;
           }
 
           .back-link:hover {
@@ -480,6 +497,7 @@ app.get('/ai-bots/:id/chat', async (c) => {
 
           .input-area {
             padding: 1.25rem;
+            padding-bottom: calc(1.25rem + env(safe-area-inset-bottom));
             background-color: var(--chat-bg);
             border-top: 1px solid var(--border-color);
           }
@@ -600,8 +618,8 @@ app.get('/ai-bots/:id/chat', async (c) => {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
             Back
           </a>
-          <h1>${bot.name} <span class="model-name">${bot.modelName}</span></h1>
-          <div style="width: 60px;"></div> <!-- Spacer for centering -->
+          <h1><span class="bot-name">${bot.name}</span> <span class="model-name">${bot.modelName}</span></h1>
+          <div style="width: 60px; flex-shrink: 0;"></div> <!-- Spacer for centering -->
         </div>
 
         <div id="chat-container">
