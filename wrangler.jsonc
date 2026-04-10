@@ -6,9 +6,9 @@
   // "compatibility_flags": [
   //   "nodejs_compat"
   // ],
-  "vars": {
-    "COOKIE_SECRET": "local_dev_secret"
-  },
+  // "vars": {
+  //  "COOKIE_SECRET": ""
+  // },
   // "kv_namespaces": [
   //   {
   //     "binding": "MY_KV_NAMESPACE",
