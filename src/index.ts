@@ -24,31 +24,7 @@ type Bindings = {
 const app = new Hono<{ Bindings: Bindings }>()
 app.route('/api/internal/db', dbApi)
 
-async function getAuthenticatedUserId(c: any) {
-  const dbClient = new DbClient(app, c.env)
-
-  const tokenValue = c.req.header('Authorization')?.replace('Bearer ', '')
-  if (tokenValue) {
-    const tokenData = await dbClient.getApiTokenByValue(tokenValue)
-    if (tokenData) return tokenData.userId
-  }
-
-  const sessionCookie = getCookie(c, 'session')
-  if (sessionCookie) {
-    try {
-      const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
-      const sessionId = payload.id as string
-      const session = await dbClient.getSessionById(sessionId)
-      if (session && session.expiresAt > Math.floor(Date.now() / 1000)) {
-        return session.userId
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
-
-  return null
-}
+import { getAuthenticatedUserId } from './api/auth'
 
 app.use('/auth/google', (c, next) => {
 
@@ -106,7 +82,7 @@ app.get('/logout', async (c) => {
 })
 
 app.post('/sessions/:id/delete', async (c) => {
-  const userId = await getAuthenticatedUserId(c)
+  const userId = await getAuthenticatedUserId(c, app)
   if (!userId) return c.redirect('/')
 
   const id = c.req.param('id')
@@ -121,7 +97,7 @@ app.post('/sessions/:id/delete', async (c) => {
 
 
 app.post('/api-tokens', async (c) => {
-  const userId = await getAuthenticatedUserId(c)
+  const userId = await getAuthenticatedUserId(c, app)
   if (!userId) return c.redirect('/')
 
   const dbClient = new DbClient(app, c.env)
@@ -140,7 +116,7 @@ app.post('/api-tokens', async (c) => {
 
 
 app.post('/api-tokens/:id/delete', async (c) => {
-  const userId = await getAuthenticatedUserId(c)
+  const userId = await getAuthenticatedUserId(c, app)
   if (!userId) return c.redirect('/')
 
   const id = parseInt(c.req.param('id'), 10)
@@ -159,7 +135,7 @@ app.post('/api-tokens/:id/delete', async (c) => {
 
 
 app.get('/api/bots/:id', async (c) => {
-  const userId = await getAuthenticatedUserId(c)
+  const userId = await getAuthenticatedUserId(c, app)
   if (!userId) return c.json({ error: 'Unauthorized' }, 401)
 
   const id = parseInt(c.req.param('id'), 10)
@@ -179,7 +155,7 @@ app.get('/api/bots/:id', async (c) => {
 
 
 app.post('/ai-bots', async (c) => {
-  const userId = await getAuthenticatedUserId(c)
+  const userId = await getAuthenticatedUserId(c, app)
   if (!userId) return c.redirect('/')
 
   const dbClient = new DbClient(app, c.env)
@@ -200,7 +176,7 @@ app.post('/ai-bots', async (c) => {
 
 
 app.post('/ai-bots/:id/delete', async (c) => {
-  const userId = await getAuthenticatedUserId(c)
+  const userId = await getAuthenticatedUserId(c, app)
   if (!userId) return c.redirect('/')
 
   const id = parseInt(c.req.param('id'), 10)
@@ -216,7 +192,7 @@ app.post('/ai-bots/:id/delete', async (c) => {
 
 
 app.post('/ai-bots/:id/chat', async (c) => {
-  const userId = await getAuthenticatedUserId(c)
+  const userId = await getAuthenticatedUserId(c, app)
   if (!userId) return c.json({ error: 'Unauthorized' }, 401)
 
   const id = parseInt(c.req.param('id'), 10)
@@ -292,7 +268,7 @@ app.post('/ai-bots/:id/chat', async (c) => {
 
 
 app.get('/ai-bots/:id/edit', async (c) => {
-  const userId = await getAuthenticatedUserId(c)
+  const userId = await getAuthenticatedUserId(c, app)
   if (!userId) return c.redirect('/')
 
   const id = parseInt(c.req.param('id'), 10)
@@ -334,7 +310,7 @@ app.get('/ai-bots/:id/edit', async (c) => {
 })
 
 app.post('/ai-bots/:id/edit', async (c) => {
-  const userId = await getAuthenticatedUserId(c)
+  const userId = await getAuthenticatedUserId(c, app)
   if (!userId) return c.redirect('/')
 
   const id = parseInt(c.req.param('id'), 10)
@@ -359,7 +335,7 @@ app.post('/ai-bots/:id/edit', async (c) => {
 
 
 app.post('/ai-bots/:id/update-model', async (c) => {
-  const userId = await getAuthenticatedUserId(c)
+  const userId = await getAuthenticatedUserId(c, app)
   if (!userId) return c.redirect('/')
 
   const id = parseInt(c.req.param('id'), 10)

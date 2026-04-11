@@ -8,15 +8,36 @@ type Bindings = {
   COOKIE_SECRET: string
 }
 
-const dbApi = new Hono<{ Bindings: Bindings }>()
+const dbApi = new Hono<{ 
+  Bindings: Bindings;
+  Variables: {
+    tokenData: any;
+  };
+}>()
 
-// Add simple auth middleware to prevent external access
+// Add auth middleware to allow access via internal token OR a valid API token
 dbApi.use('*', async (c, next) => {
-  const token = c.req.header('x-internal-token')
-  if (!token || token !== c.env.COOKIE_SECRET) {
-    return c.json({ error: 'Unauthorized internal access' }, 401)
+  const internalToken = c.req.header('x-internal-token')
+  if (internalToken && internalToken === c.env.COOKIE_SECRET) {
+    await next()
+    return
   }
-  await next()
+
+  const authHeader = c.req.header('Authorization')
+  const apiTokenValue = authHeader?.replace('Bearer ', '')
+
+  if (apiTokenValue) {
+    const db = drizzle(c.env.DB)
+    const tokenData = await db.select().from(apiTokens).where(eq(apiTokens.token, apiTokenValue)).get()
+    if (tokenData) {
+      // Attach the token data to the context for use in routes
+      c.set('tokenData', tokenData)
+      await next()
+      return
+    }
+  }
+
+  return c.json({ error: 'Unauthorized access' }, 401)
 })
 
 // User routes

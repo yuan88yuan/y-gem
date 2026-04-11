@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { Layout } from '../src/templates/layout';
 import { ChatPage } from '../src/templates/chat';
+import { DashboardPage } from '../src/templates/dashboard';
 
 dotenv.config();
 
@@ -17,8 +18,8 @@ const html = (strings: TemplateStringsArray, ...values: any[]) =>
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const REMOTE_SERVER_URL = process.env.REMOTE_SERVER_URL || '';
-const API_TOKEN = process.env.API_TOKEN || '';
+const YGEM_SERVER_URL = process.env.YGEM_SERVER_URL || '';
+const YGEM_API_TOKEN = process.env.YGEM_API_TOKEN || '';
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -26,16 +27,139 @@ app.use(express.urlencoded({ extended: true }));
 async function remoteFetch(endpoint: string, options: any = {}) {
     const response = await axios({
         method: options.method || 'GET',
-        url: `${REMOTE_SERVER_URL}${endpoint}`,
+        url: `${YGEM_SERVER_URL}${endpoint}`,
         data: options.data,
         headers: {
             ...options.headers,
-            'Authorization': `Bearer ${API_TOKEN}`
+            'Authorization': `Bearer ${YGEM_API_TOKEN}`
         },
         responseType: options.responseType || 'json'
     });
     return response;
 }
+
+app.get('/', async (req, res) => {
+    try {
+        const tokenResp = await remoteFetch('/api/internal/db/tokens?token=' + YGEM_API_TOKEN);
+        const tokens = tokenResp.data;
+        if (!tokens || tokens.length === 0) {
+            return res.status(401).send('Invalid or missing YGEM_API_TOKEN');
+        }
+        const token = tokens[0];
+        const userId = token.userId;
+
+        const userResp = await remoteFetch(`/api/internal/db/users?id=${userId}`);
+        const dbUser = userResp.data[0];
+
+        const sessionsResp = await remoteFetch(`/api/internal/db/sessions?userId=${userId}`);
+        const activeSessions = sessionsResp.data;
+
+        const userTokensResp = await remoteFetch(`/api/internal/db/tokens?userId=${userId}`);
+        const userTokens = userTokensResp.data;
+
+        const botsResp = await remoteFetch(`/api/internal/db/bots?userId=${userId}`);
+        const bots = botsResp.data;
+
+        let availableModels: string[] = []
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY })
+            const modelsResp = await ai.models.list()
+            for await (const m of modelsResp) {
+                if (m.name) {
+                    availableModels.push(m.name.replace(/^models\//, ''))
+                }
+            }
+        } catch (e) {
+            availableModels = [
+                'gemini-3-flash-preview',
+                'gemini-2.5-flash',
+                'gemini-2.5-pro',
+                'gemini-2.0-flash',
+                'gemini-2.0-pro-exp',
+            ]
+        }
+
+        const content = await DashboardPage({ 
+            dbUser, 
+            activeSessions, 
+            tokens: userTokens, 
+            bots, 
+            sessionId: 'local-session', 
+            availableModels 
+        });
+        const page = await Layout(`Local Dashboard`, content);
+        res.send(page.toString());
+    } catch (error: any) {
+        console.error('[Local Server] Error loading dashboard:', error.message);
+        res.status(500).send('Error loading dashboard');
+    }
+});
+
+app.post('/ai-bots', async (req, res) => {
+    try {
+        const tokenResp = await remoteFetch('/api/internal/db/tokens?token=' + YGEM_API_TOKEN);
+        const userId = tokenResp.data[0].userId;
+        
+        await remoteFetch(`/api/internal/db/bots`, {
+            method: 'POST',
+            data: { 
+                userId, 
+                ...req.body, 
+                createdAt: Math.floor(Date.now() / 1000) 
+            }
+        });
+        res.redirect('/');
+    } catch (e) {
+        res.status(500).send('Error creating bot');
+    }
+});
+
+app.post('/ai-bots/:id/delete', async (req, res) => {
+    try {
+        await remoteFetch(`/api/internal/db/bots/${req.params.id}`, { method: 'DELETE' });
+        res.redirect('/');
+    } catch (e) {
+        res.status(500).send('Error deleting bot');
+    }
+});
+
+app.post('/api-tokens', async (req, res) => {
+    try {
+        const tokenResp = await remoteFetch('/api/internal/db/tokens?token=' + YGEM_API_TOKEN);
+        const userId = tokenResp.data[0].userId;
+        
+        await remoteFetch(`/api/internal/db/tokens`, {
+            method: 'POST',
+            data: { 
+                userId, 
+                token: crypto.randomUUID(), 
+                description: req.body.description, 
+                createdAt: Math.floor(Date.now() / 1000) 
+            }
+        });
+        res.redirect('/');
+    } catch (e) {
+        res.status(500).send('Error creating token');
+    }
+});
+
+app.post('/api-tokens/:id/delete', async (req, res) => {
+    try {
+        await remoteFetch(`/api/internal/db/tokens/${req.params.id}`, { method: 'DELETE' });
+        res.redirect('/');
+    } catch (e) {
+        res.status(500).send('Error deleting token');
+    }
+});
+
+app.post('/sessions/:id/delete', async (req, res) => {
+    try {
+        await remoteFetch(`/api/internal/db/sessions/${req.params.id}`, { method: 'DELETE' });
+        res.redirect('/');
+    } catch (e) {
+        res.status(500).send('Error deleting session');
+    }
+});
 
 app.get('/local-bot/:id', async (req, res) => {
     try {
@@ -123,20 +247,31 @@ app.get('/chat/:id', async (req, res) => {
         const remoteBot = await remoteFetch(`/api/bots/${botId}`);
         const bot = remoteBot.data;
         
-        // Mock available models since we are only replicating the chat interface
-        const availableModels = [
+        let availableModels: string[] = []
+        try {
+          const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY })
+          const modelsResp = await ai.models.list()
+          for await (const m of modelsResp) {
+            if (m.name) {
+              availableModels.push(m.name.replace(/^models\//, ''))
+            }
+          }
+        } catch (e) {
+          availableModels = [
             'gemini-3-flash-preview',
             'gemini-2.5-flash',
             'gemini-2.5-pro',
             'gemini-2.0-flash',
             'gemini-2.0-pro-exp',
-        ];
-        
-        // Use the shared templates from src/templates
-        // We use await because Hono's html template can return a Promise
+          ]
+        }
+        if (!availableModels.includes(bot.modelName)) {
+          availableModels.push(bot.modelName)
+        }
+
         const content = await ChatPage({ bot, availableModels });
         const page = await Layout(`Local Chat: ${bot.name}`, content);
-        res.send(page);
+        res.send(page.toString());
     } catch (error: any) {
         console.error('[Local Server] Error loading shared templates:', error.message);
         res.status(500).send('Error loading bot info or templates');
@@ -145,5 +280,6 @@ app.get('/chat/:id', async (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`\x1b[32mLocal Proxy Server (TSX) running at http://localhost:${PORT}\x1b[0m`);
-    console.log(`Remote URL: ${REMOTE_SERVER_URL}`);
+    console.log(`Remote URL: ${YGEM_SERVER_URL}`);
 });
+
