@@ -1,4 +1,6 @@
-export const Layout = (title: string, content: string) => `
+import { html } from 'hono/html';
+
+export const Layout = (title: string, content: any) => html`
 <!DOCTYPE html>
 <html lang="en">
 <head>
