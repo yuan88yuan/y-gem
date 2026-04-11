@@ -308,8 +308,8 @@ app.get('/ai-bots/:id/edit', async (c) => {
       const ai = new GoogleGenAI({ apiKey: c.env.GOOGLE_API_KEY })
       const modelsResp = await ai.models.list()
       for await (const m of modelsResp) {
-        if (m.name && m.name.includes('gemini')) {
-          availableModels.push(m.name)
+        if (m.name) {
+          availableModels.push(m.name.replace(/^models\//, ''))
         }
       }
     } catch (e) {
@@ -383,9 +383,10 @@ app.get('/ai-bots/:id/edit', async (c) => {
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
-                  <select name="modelName" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
-                    ${availableModels.map((m: string) => html`<option value="${m}" ${m === bot.modelName ? 'selected' : ''}>${m}</option>`)}
-                  </select>
+                  <input type="text" name="modelName" list="available-models" value="${bot.modelName}" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
+                  <datalist id="available-models">
+                    ${availableModels.map((m: string) => html`<option value="${m}"></option>`)}
+                  </datalist>
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">System Prompt</label>
@@ -498,8 +499,8 @@ app.get('/ai-bots/:id/chat', async (c) => {
       const ai = new GoogleGenAI({ apiKey: c.env.GOOGLE_API_KEY })
       const modelsResp = await ai.models.list()
       for await (const m of modelsResp) {
-        if (m.name && m.name.includes('gemini')) {
-          availableModels.push(m.name)
+        if (m.name) {
+          availableModels.push(m.name.replace(/^models\//, ''))
         }
       }
     } catch (e) {
@@ -834,10 +835,12 @@ app.get('/ai-bots/:id/chat', async (c) => {
           </a>
           <h1>
             <span class="bot-name">${bot.name}</span>
-            <form action="/ai-bots/${bot.id}/update-model" method="POST" style="display:inline-block; margin-left:0.5rem;">
-              <select name="modelName" onchange="this.form.submit()" style="font-size: 0.875rem; color: var(--text-secondary); background: #e5e7eb; padding: 0.125rem 0.5rem; border-radius: 9999px; border: none; outline: none; cursor: pointer; max-width: 150px; text-overflow: ellipsis;">
-                ${availableModels.map((m: string) => html`<option value="${m}" ${m === bot.modelName ? 'selected' : ''}>${m}</option>`)}
-              </select>
+            <form action="/ai-bots/${bot.id}/update-model" method="POST" style="display:inline-flex; align-items:center; margin-left:0.5rem; gap:0.25rem;">
+              <input type="text" name="modelName" list="available-models" value="${bot.modelName}" style="font-size: 0.875rem; color: var(--text-secondary); background: #e5e7eb; padding: 0.125rem 0.5rem; border-radius: 9999px; border: none; outline: none; max-width: 150px; text-overflow: ellipsis;">
+              <datalist id="available-models">
+                ${availableModels.map((m: string) => html`<option value="${m}"></option>`)}
+              </datalist>
+              <button type="submit" style="font-size: 0.75rem; background: var(--button-bg); color: white; border: none; border-radius: 9999px; padding: 0.125rem 0.5rem; cursor: pointer;">Update</button>
             </form>
           </h1>
           <div style="width: 60px; flex-shrink: 0;"></div> <!-- Spacer for centering -->
@@ -1023,8 +1026,8 @@ app.get('/', async (c) => {
             const ai = new GoogleGenAI({ apiKey: c.env.GOOGLE_API_KEY })
             const modelsResp = await ai.models.list()
             for await (const m of modelsResp) {
-              if (m.name && m.name.includes('gemini')) {
-                availableModels.push(m.name)
+              if (m.name) {
+                availableModels.push(m.name.replace(/^models\//, ''))
               }
             }
           } catch (e) {
@@ -1149,9 +1152,10 @@ app.get('/', async (c) => {
                       </div>
                       <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
-                        <select name="modelName" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
-                          ${availableModels.map((m: string) => html`<option value="${m}" ${m === 'gemini-3-flash-preview' ? 'selected' : ''}>${m}</option>`)}
-                        </select>
+                        <input type="text" name="modelName" list="available-models" value="gemini-3-flash-preview" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
+                        <datalist id="available-models">
+                          ${availableModels.map((m: string) => html`<option value="${m}"></option>`)}
+                        </datalist>
                       </div>
                       <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">System Prompt</label>
