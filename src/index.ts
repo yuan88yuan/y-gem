@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { html } from 'hono/html'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
+import { streamSSE } from 'hono/streaming'
 import { sign, verify } from 'hono/jwt'
 import { drizzle } from 'drizzle-orm/d1'
 import { eq } from 'drizzle-orm'
@@ -241,35 +242,72 @@ app.post('/ai-bots/:id/chat', async (c) => {
 
     const ai = new GoogleGenAI({ apiKey: c.env.GOOGLE_API_KEY })
 
-    const response = await ai.models.generateContent({
-      model: bot.modelName,
-      contents,
-      config: {
-        thinkingConfig: {
-          includeThoughts: true,
+    return streamSSE(c, async (stream) => {
+      // Create the chat response
+      const responseStream = await ai.models.generateContentStream({
+        model: bot.modelName,
+        contents,
+        config: {
+          thinkingConfig: {
+            includeThoughts: true,
+          },
         },
-      },
-    })
+      })
 
-    let thoughts = ""
-    let answer = ""
+      for await (const chunk of responseStream) {
+        let chunkThoughts = ""
+        let chunkAnswer = ""
 
-    if (response.candidates && response.candidates.length > 0) {
-      const content = response.candidates[0].content;
-      if (content && content.parts) {
-        for (const part of content.parts) {
-          if (!part.text) {
-            continue
-          } else if ((part as any).thought) {
-            thoughts += part.text
-          } else {
-            answer += part.text
+        if (chunk.candidates && chunk.candidates.length > 0) {
+          const content = chunk.candidates[0].content;
+          if (content && content.parts) {
+            for (const part of content.parts) {
+              if (!part.text) {
+                continue
+              } else if ((part as any).thought) {
+                chunkThoughts += part.text
+              } else {
+                chunkAnswer += part.text
+              }
+            }
           }
         }
-      }
-    }
 
-    return c.json({ answer, thoughts })
+        if (chunkThoughts || chunkAnswer) {
+          await stream.writeSSE({
+            data: JSON.stringify({ thoughts: chunkThoughts, answer: chunkAnswer }),
+          })
+        }
+      }
+    })
+
+
+      for await (const chunk of responseStream) {
+        let chunkThoughts = ""
+        let chunkAnswer = ""
+
+        if (chunk.candidates && chunk.candidates.length > 0) {
+          const content = chunk.candidates[0].content;
+          if (content && content.parts) {
+            for (const part of content.parts) {
+              if (!part.text) {
+                continue
+              } else if ((part as any).thought) {
+                chunkThoughts += part.text
+              } else {
+                chunkAnswer += part.text
+              }
+            }
+          }
+        }
+
+        if (chunkThoughts || chunkAnswer) {
+          await stream.writeSSE({
+            data: JSON.stringify({ thoughts: chunkThoughts, answer: chunkAnswer }),
+          })
+        }
+      }
+    })
   } catch (e: any) {
     console.error(e)
     return c.json({ error: 'Internal server error', details: e.message }, 500)
@@ -297,7 +335,10 @@ app.get('/ai-bots/:id/edit', async (c) => {
       const modelsResp = await ai.models.list()
       for await (const m of modelsResp) {
         if (m.name) {
-          availableModels.push(m.name)
+          if (m.name) {
+            availableModels.push(m.name.replace(/^models\//, ''))
+          }
+
         }
       }
     } catch (e) {
@@ -371,9 +412,10 @@ app.get('/ai-bots/:id/edit', async (c) => {
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
-                  <select name="modelName" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
-                    ${availableModels.map((m: string) => html`<option value="${m}" ${m === bot.modelName ? 'selected' : ''}>${m}</option>`)}
-                  </select>
+                  <input type="text" name="modelName" list="available-models" value="${bot.modelName}" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
+                  <datalist id="available-models">
+                    ${availableModels.map((m: string) => html`<option value="${m}"></option>`)}
+                  </datalist>
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">System Prompt</label>
@@ -476,8 +518,8 @@ app.get('/ai-bots/:id/chat', async (c) => {
       const ai = new GoogleGenAI({ apiKey: c.env.GOOGLE_API_KEY })
       const modelsResp = await ai.models.list()
       for await (const m of modelsResp) {
-        if (m.name && m.name.includes('gemini')) {
-          availableModels.push(m.name)
+        if (m.name) {
+          availableModels.push(m.name.replace(/^models\//, ''))
         }
       }
     } catch (e) {
@@ -812,10 +854,12 @@ app.get('/ai-bots/:id/chat', async (c) => {
           </a>
           <h1>
             <span class="bot-name">${bot.name}</span>
-            <form action="/ai-bots/${bot.id}/update-model" method="POST" style="display:inline-block; margin-left:0.5rem;">
-              <select name="modelName" onchange="this.form.submit()" style="font-size: 0.875rem; color: var(--text-secondary); background: #e5e7eb; padding: 0.125rem 0.5rem; border-radius: 9999px; border: none; outline: none; cursor: pointer; max-width: 150px; text-overflow: ellipsis;">
-                ${availableModels.map((m: string) => html`<option value="${m}" ${m === bot.modelName ? 'selected' : ''}>${m}</option>`)}
-              </select>
+            <form action="/ai-bots/${bot.id}/update-model" method="POST" style="display:inline-flex; align-items:center; margin-left:0.5rem; gap:0.25rem;">
+              <input type="text" name="modelName" list="available-models" value="${bot.modelName}" style="font-size: 0.875rem; color: var(--text-secondary); background: #e5e7eb; padding: 0.125rem 0.5rem; border-radius: 9999px; border: none; outline: none; max-width: 150px; text-overflow: ellipsis;">
+              <datalist id="available-models">
+                ${availableModels.map((m: string) => html`<option value="${m}"></option>`)}
+              </datalist>
+              <button type="submit" style="font-size: 0.75rem; background: var(--button-bg); color: white; border: none; border-radius: 9999px; padding: 0.125rem 0.5rem; cursor: pointer;">Update</button>
             </form>
           </h1>
           <div style="width: 60px; flex-shrink: 0;"></div> <!-- Spacer for centering -->
@@ -946,12 +990,81 @@ app.get('/ai-bots/:id/chat', async (c) => {
                 hideLoading();
                 appendMessage('model', 'Error: ' + res.statusText);
                 history.pop();
-              } else {
-                const data = await res.json();
-                hideLoading();
-                appendMessage('model', data.answer, data.thoughts);
-                history.push({ role: 'model', text: data.answer });
+                input.disabled = false;
+                sendBtn.disabled = false;
+                input.focus();
+                return;
               }
+
+              hideLoading();
+
+              // Create placeholders for the streaming response
+              const wrapper = document.createElement('div');
+              wrapper.className = 'msg-wrapper model';
+
+              const thoughtContainer = document.createElement('div');
+              thoughtContainer.className = 'thought-container';
+              thoughtContainer.style.display = 'none';
+
+              const toggle = document.createElement('div');
+              toggle.className = 'thought-toggle';
+              toggle.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-9 4 18 2-9h4"/></svg> Thoughts';
+
+              const thoughtDiv = document.createElement('div');
+              thoughtDiv.className = 'thought';
+
+              toggle.onclick = () => {
+                thoughtDiv.classList.toggle('show');
+              };
+
+              thoughtContainer.appendChild(toggle);
+              thoughtContainer.appendChild(thoughtDiv);
+              wrapper.appendChild(thoughtContainer);
+
+              const msgDiv = document.createElement('div');
+              msgDiv.className = 'msg model';
+              wrapper.appendChild(msgDiv);
+
+              container.appendChild(wrapper);
+
+              let finalAnswer = '';
+              let finalThoughts = '';
+
+              const reader = res.body.getReader();
+              const decoder = new TextDecoder();
+              let buffer = '';
+
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\\n');
+                buffer = lines.pop() || ''; // Keep the incomplete line in the buffer
+
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    try {
+                      const data = JSON.parse(line.slice(6));
+                      if (data.thoughts) {
+                        finalThoughts += data.thoughts;
+                        thoughtContainer.style.display = 'block';
+                        thoughtDiv.innerHTML = finalThoughts.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '<br/>');
+                      }
+                      if (data.answer) {
+                        finalAnswer += data.answer;
+                        msgDiv.innerHTML = formatText(finalAnswer);
+                      }
+                      container.scrollTop = container.scrollHeight;
+                    } catch (e) {
+                      console.error('Error parsing SSE data', e);
+                    }
+                  }
+                }
+              }
+
+              history.push({ role: 'model', text: finalAnswer });
+
             } catch (err) {
               hideLoading();
               appendMessage('model', 'Network error.');
@@ -1001,8 +1114,8 @@ app.get('/', async (c) => {
             const ai = new GoogleGenAI({ apiKey: c.env.GOOGLE_API_KEY })
             const modelsResp = await ai.models.list()
             for await (const m of modelsResp) {
-              if (m.name && m.name.includes('gemini')) {
-                availableModels.push(m.name)
+              if (m.name) {
+                availableModels.push(m.name.replace(/^models\//, ''))
               }
             }
           } catch (e) {
@@ -1127,9 +1240,10 @@ app.get('/', async (c) => {
                       </div>
                       <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
-                        <select name="modelName" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
-                          ${availableModels.map((m: string) => html`<option value="${m}" ${m === 'gemini-3-flash-preview' ? 'selected' : ''}>${m}</option>`)}
-                        </select>
+                        <input type="text" name="modelName" list="available-models" value="gemini-3-flash-preview" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
+                        <datalist id="available-models">
+                          ${availableModels.map((m: string) => html`<option value="${m}"></option>`)}
+                        </datalist>
                       </div>
                       <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">System Prompt</label>
