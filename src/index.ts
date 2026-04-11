@@ -303,6 +303,30 @@ app.get('/ai-bots/:id/edit', async (c) => {
       return c.redirect('/')
     }
 
+    let availableModels: string[] = []
+    try {
+      const ai = new GoogleGenAI({ apiKey: c.env.GOOGLE_API_KEY })
+      const modelsResp = await ai.models.list()
+      for await (const m of modelsResp) {
+        if (m.name && m.name.includes('gemini')) {
+          availableModels.push(m.name)
+        }
+      }
+    } catch (e) {
+      // Fallback if API key is invalid or network fails
+      availableModels = [
+        'gemini-3-flash-preview',
+        'gemini-2.5-flash',
+        'gemini-2.5-pro',
+        'gemini-2.0-flash',
+        'gemini-2.0-pro-exp',
+      ]
+    }
+    // Ensure current model is in list
+    if (!availableModels.includes(bot.modelName)) {
+      availableModels.push(bot.modelName)
+    }
+
     return c.html(html`
       <!DOCTYPE html>
       <html lang="en">
@@ -359,7 +383,9 @@ app.get('/ai-bots/:id/edit', async (c) => {
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
-                  <input type="text" name="modelName" value="${bot.modelName}" required class="w-full rounded-md shadow-sm sm:text-sm" />
+                  <select name="modelName" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
+                    ${availableModels.map((m: string) => html`<option value="${m}" ${m === bot.modelName ? 'selected' : ''}>${m}</option>`)}
+                  </select>
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-gray-700 mb-1">System Prompt</label>
@@ -415,6 +441,36 @@ app.post('/ai-bots/:id/edit', async (c) => {
   return c.redirect('/')
 })
 
+app.post('/ai-bots/:id/update-model', async (c) => {
+  const id = parseInt(c.req.param('id'), 10)
+  if (isNaN(id)) return c.redirect('/')
+
+  const sessionCookie = getCookie(c, 'session')
+  if (sessionCookie) {
+    try {
+      const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
+      const sessionId = payload.id as string
+      const db = drizzle(c.env.DB)
+
+      const currentSession = await db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+      if (currentSession && currentSession.expiresAt > Math.floor(Date.now() / 1000)) {
+        const botToEdit = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
+        if (botToEdit && botToEdit.userId === currentSession.userId) {
+          const body = await c.req.parseBody()
+          const modelName = (body['modelName'] as string) || 'gemini-3-flash-preview'
+
+          await db.update(aiBots)
+            .set({ modelName })
+            .where(eq(aiBots.id, id))
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+  return c.redirect(`/ai-bots/${id}/chat`)
+})
+
 app.get('/ai-bots/:id/chat', async (c) => {
   const id = parseInt(c.req.param('id'), 10)
   if (isNaN(id)) return c.redirect('/')
@@ -435,6 +491,30 @@ app.get('/ai-bots/:id/chat', async (c) => {
     const bot = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
     if (!bot || bot.userId !== currentSession.userId) {
       return c.redirect('/')
+    }
+
+    let availableModels: string[] = []
+    try {
+      const ai = new GoogleGenAI({ apiKey: c.env.GOOGLE_API_KEY })
+      const modelsResp = await ai.models.list()
+      for await (const m of modelsResp) {
+        if (m.name && m.name.includes('gemini')) {
+          availableModels.push(m.name)
+        }
+      }
+    } catch (e) {
+      // Fallback if API key is invalid or network fails
+      availableModels = [
+        'gemini-3-flash-preview',
+        'gemini-2.5-flash',
+        'gemini-2.5-pro',
+        'gemini-2.0-flash',
+        'gemini-2.0-pro-exp',
+      ]
+    }
+    // Ensure current model is in list
+    if (!availableModels.includes(bot.modelName)) {
+      availableModels.push(bot.modelName)
     }
 
     return c.html(html`
@@ -752,7 +832,14 @@ app.get('/ai-bots/:id/chat', async (c) => {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
             Back
           </a>
-          <h1><span class="bot-name">${bot.name}</span> <span class="model-name">${bot.modelName}</span></h1>
+          <h1>
+            <span class="bot-name">${bot.name}</span>
+            <form action="/ai-bots/${bot.id}/update-model" method="POST" style="display:inline-block; margin-left:0.5rem;">
+              <select name="modelName" onchange="this.form.submit()" style="font-size: 0.875rem; color: var(--text-secondary); background: #e5e7eb; padding: 0.125rem 0.5rem; border-radius: 9999px; border: none; outline: none; cursor: pointer; max-width: 150px; text-overflow: ellipsis;">
+                ${availableModels.map((m: string) => html`<option value="${m}" ${m === bot.modelName ? 'selected' : ''}>${m}</option>`)}
+              </select>
+            </form>
+          </h1>
           <div style="width: 60px; flex-shrink: 0;"></div> <!-- Spacer for centering -->
         </div>
 
@@ -931,6 +1018,26 @@ app.get('/', async (c) => {
           const tokens = await db.select().from(apiTokens).where(eq(apiTokens.userId, dbUser.id)).all()
           const bots = await db.select().from(aiBots).where(eq(aiBots.userId, dbUser.id)).all()
 
+          let availableModels: string[] = []
+          try {
+            const ai = new GoogleGenAI({ apiKey: c.env.GOOGLE_API_KEY })
+            const modelsResp = await ai.models.list()
+            for await (const m of modelsResp) {
+              if (m.name && m.name.includes('gemini')) {
+                availableModels.push(m.name)
+              }
+            }
+          } catch (e) {
+            // Fallback if API key is invalid or network fails
+            availableModels = [
+              'gemini-3-flash-preview',
+              'gemini-2.5-flash',
+              'gemini-2.5-pro',
+              'gemini-2.0-flash',
+              'gemini-2.0-pro-exp',
+            ]
+          }
+
           return c.html(html`
             <!DOCTYPE html>
             <html lang="en">
@@ -988,10 +1095,15 @@ app.get('/', async (c) => {
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
                   <!-- AI Bots Column -->
-                  <div class="lg:col-span-2 space-y-8">
+                  <div class="lg:col-span-3 space-y-8">
                     <div class="bg-white shadow rounded-xl overflow-hidden border border-gray-100">
                       <div class="px-6 py-5 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
                         <h2 class="text-lg font-semibold text-gray-800">AI Bots</h2>
+                        <div class="flex space-x-2">
+                          <button onclick="openModal('create-bot-modal')" class="text-sm bg-primary text-white hover:bg-primary-hover px-3 py-1.5 rounded-md font-medium transition-colors">Create Bot</button>
+                          <button onclick="openModal('api-keys-modal')" class="text-sm bg-gray-800 text-white hover:bg-gray-900 px-3 py-1.5 rounded-md font-medium transition-colors">API Keys</button>
+                          <button onclick="openModal('sessions-modal')" class="text-sm bg-gray-200 text-gray-800 hover:bg-gray-300 px-3 py-1.5 rounded-md font-medium transition-colors">Sessions</button>
+                        </div>
                       </div>
                       <div class="p-6">
                         ${bots.length === 0 ? html`<p class="text-gray-500 text-sm italic mb-4">No bots created yet.</p>` : ''}
@@ -1005,7 +1117,7 @@ app.get('/', async (c) => {
                               </div>
                               <div class="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <a href="/ai-bots/${b.id}/edit" class="text-sm text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-md font-medium transition-colors">Edit</a>
-                                <form action="/ai-bots/${b.id}/delete" method="POST" class="m-0">
+                                <form action="/ai-bots/${b.id}/delete" method="POST" class="m-0" onsubmit="return confirm('Are you sure you want to delete this bot?');">
                                   <button type="submit" class="text-sm text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-md font-medium transition-colors">Delete</button>
                                 </form>
                               </div>
@@ -1013,97 +1125,127 @@ app.get('/', async (c) => {
                           `)}
                         </ul>
 
-                        <div class="mt-4 pt-4 border-t border-gray-100">
-                          <h3 class="text-md font-medium text-gray-800 mb-3">Create New Bot</h3>
-                          <form action="/ai-bots" method="POST" class="space-y-4">
-                            <div>
-                              <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                              <input type="text" name="name" required class="w-full rounded-md shadow-sm sm:text-sm" placeholder="My Awesome Bot" />
-                            </div>
-                            <div>
-                              <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
-                              <input type="text" name="modelName" value="gemini-3-flash-preview" required class="w-full rounded-md shadow-sm sm:text-sm" />
-                            </div>
-                            <div>
-                              <label class="block text-sm font-medium text-gray-700 mb-1">System Prompt</label>
-                              <textarea name="systemPrompt" rows="3" class="w-full rounded-md shadow-sm sm:text-sm" placeholder="You are a helpful assistant..."></textarea>
-                            </div>
-                            <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors">
-                              Create Bot
-                            </button>
-                          </form>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- API Tokens & Sessions Column -->
-                  <div class="space-y-8">
-                    <div class="bg-white shadow rounded-xl overflow-hidden border border-gray-100">
-                      <div class="px-6 py-5 border-b border-gray-200 bg-gray-50">
-                        <h2 class="text-lg font-semibold text-gray-800">API Tokens</h2>
-                      </div>
-                      <div class="p-6">
-                        ${tokens.length === 0 ? html`<p class="text-gray-500 text-sm italic mb-4">No tokens created.</p>` : ''}
-                        <ul class="divide-y divide-gray-200 mb-6">
-                          ${tokens.map(t => html`
-                            <li class="py-3">
-                              <div class="flex justify-between items-start">
-                                <div class="break-all pr-4">
-                                  <p class="text-sm font-mono text-gray-800 bg-gray-50 p-1 rounded border border-gray-100 mb-1">${t.token}</p>
-                                  <p class="text-xs text-gray-500">${t.description || 'No description'}</p>
-                                </div>
-                                <form action="/api-tokens/${t.id}/delete" method="POST" class="flex-shrink-0">
-                                  <button type="submit" class="text-xs text-red-600 hover:text-red-800 hover:underline">Revoke</button>
-                                </form>
-                              </div>
-                            </li>
-                          `)}
-                        </ul>
-
-                        <div class="mt-4 pt-4 border-t border-gray-100">
-                          <form action="/api-tokens" method="POST" class="space-y-3">
-                            <div>
-                              <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                              <input type="text" name="description" class="w-full rounded-md shadow-sm sm:text-sm" placeholder="Token description" />
-                            </div>
-                            <button type="submit" class="w-full inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gray-800 hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 transition-colors">
-                              Generate Token
-                            </button>
-                          </form>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="bg-white shadow rounded-xl overflow-hidden border border-gray-100">
-                      <div class="px-6 py-5 border-b border-gray-200 bg-gray-50">
-                        <h2 class="text-lg font-semibold text-gray-800">Active Sessions</h2>
-                      </div>
-                      <div class="p-6">
-                        <ul class="divide-y divide-gray-200">
-                          ${activeSessions.map(s => html`
-                            <li class="py-3 flex justify-between items-center">
-                              <div>
-                                <p class="text-sm font-medium text-gray-800">
-                                  ${s.id.substring(0, 8)}...
-                                  ${s.id === sessionId ? html`<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Current</span>` : ''}
-                                </p>
-                                <p class="text-xs text-gray-500 mt-1">Expires: ${new Date(s.expiresAt * 1000).toLocaleDateString()}</p>
-                              </div>
-                              ${s.id !== sessionId ? html`
-                              <form action="/sessions/${s.id}/delete" method="POST">
-                                <button type="submit" class="text-xs text-red-600 hover:text-red-800 hover:underline">Revoke</button>
-                              </form>
-                              ` : ''}
-                            </li>
-                          `)}
-                        </ul>
                       </div>
                     </div>
                   </div>
 
                 </div>
               </main>
+
+              <!-- Modals -->
+              <div id="create-bot-modal" class="fixed inset-0 bg-gray-500 bg-opacity-75 hidden flex items-center justify-center z-50">
+                <div class="bg-white rounded-xl shadow-xl overflow-hidden max-w-md w-full">
+                  <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <h3 class="text-lg font-medium text-gray-900">Create New Bot</h3>
+                    <button onclick="closeModal('create-bot-modal')" class="text-gray-400 hover:text-gray-500">
+                      <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                  </div>
+                  <div class="p-6">
+                    <form action="/ai-bots" method="POST" class="space-y-4">
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                        <input type="text" name="name" required class="w-full rounded-md shadow-sm sm:text-sm" placeholder="My Awesome Bot" />
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
+                        <select name="modelName" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
+                          ${availableModels.map((m: string) => html`<option value="${m}" ${m === 'gemini-3-flash-preview' ? 'selected' : ''}>${m}</option>`)}
+                        </select>
+                      </div>
+                      <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">System Prompt</label>
+                        <textarea name="systemPrompt" rows="3" class="w-full rounded-md shadow-sm sm:text-sm" placeholder="You are a helpful assistant..."></textarea>
+                      </div>
+                      <div class="mt-5 sm:mt-6 flex space-x-3">
+                        <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary text-base font-medium text-white hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:text-sm transition-colors">Create</button>
+                        <button type="button" onclick="closeModal('create-bot-modal')" class="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:text-sm transition-colors">Cancel</button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+
+              <div id="api-keys-modal" class="fixed inset-0 bg-gray-500 bg-opacity-75 hidden flex items-center justify-center z-50">
+                <div class="bg-white rounded-xl shadow-xl overflow-hidden max-w-md w-full">
+                  <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <h3 class="text-lg font-medium text-gray-900">API Tokens</h3>
+                    <button onclick="closeModal('api-keys-modal')" class="text-gray-400 hover:text-gray-500">
+                      <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                  </div>
+                  <div class="p-6 max-h-[70vh] overflow-y-auto">
+                    ${tokens.length === 0 ? html`<p class="text-gray-500 text-sm italic mb-4">No tokens created.</p>` : ''}
+                    <ul class="divide-y divide-gray-200 mb-6">
+                      ${tokens.map(t => html`
+                        <li class="py-3">
+                          <div class="flex justify-between items-start">
+                            <div class="break-all pr-4">
+                              <p class="text-sm font-mono text-gray-800 bg-gray-50 p-1 rounded border border-gray-100 mb-1">${t.token}</p>
+                              <p class="text-xs text-gray-500">${t.description || 'No description'}</p>
+                            </div>
+                            <form action="/api-tokens/${t.id}/delete" method="POST" class="flex-shrink-0">
+                              <button type="submit" class="text-xs text-red-600 hover:text-red-800 hover:underline">Revoke</button>
+                            </form>
+                          </div>
+                        </li>
+                      `)}
+                    </ul>
+
+                    <div class="mt-4 pt-4 border-t border-gray-100">
+                      <form action="/api-tokens" method="POST" class="space-y-3">
+                        <div>
+                          <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                          <input type="text" name="description" class="w-full rounded-md shadow-sm sm:text-sm" placeholder="Token description" />
+                        </div>
+                        <button type="submit" class="w-full inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gray-800 hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 transition-colors">
+                          Generate Token
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div id="sessions-modal" class="fixed inset-0 bg-gray-500 bg-opacity-75 hidden flex items-center justify-center z-50">
+                <div class="bg-white rounded-xl shadow-xl overflow-hidden max-w-md w-full">
+                  <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <h3 class="text-lg font-medium text-gray-900">Active Sessions</h3>
+                    <button onclick="closeModal('sessions-modal')" class="text-gray-400 hover:text-gray-500">
+                      <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                  </div>
+                  <div class="p-6 max-h-[70vh] overflow-y-auto">
+                    <ul class="divide-y divide-gray-200">
+                      ${activeSessions.map(s => html`
+                        <li class="py-3 flex justify-between items-center">
+                          <div>
+                            <p class="text-sm font-medium text-gray-800">
+                              ${s.id.substring(0, 8)}...
+                              ${s.id === sessionId ? html`<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Current</span>` : ''}
+                            </p>
+                            <p class="text-xs text-gray-500 mt-1">Expires: ${new Date(s.expiresAt * 1000).toLocaleDateString()}</p>
+                          </div>
+                          ${s.id !== sessionId ? html`
+                          <form action="/sessions/${s.id}/delete" method="POST">
+                            <button type="submit" class="text-xs text-red-600 hover:text-red-800 hover:underline">Revoke</button>
+                          </form>
+                          ` : ''}
+                        </li>
+                      `)}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <script>
+                function openModal(id) {
+                  document.getElementById(id).classList.remove('hidden');
+                }
+                function closeModal(id) {
+                  document.getElementById(id).classList.add('hidden');
+                }
+              </script>
             </body>
             </html>
           `)
