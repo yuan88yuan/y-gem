@@ -18,7 +18,34 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>()
 
+async function getAuthenticatedUserId(c: any) {
+  const db = drizzle(c.env.DB)
+
+  const tokenValue = c.req.header('Authorization')?.replace('Bearer ', '')
+  if (tokenValue) {
+    const tokenData = await db.select().from(apiTokens).where(eq(apiTokens.token, tokenValue)).get()
+    if (tokenData) return tokenData.userId
+  }
+
+  const sessionCookie = getCookie(c, 'session')
+  if (sessionCookie) {
+    try {
+      const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
+      const sessionId = payload.id as string
+      const session = await db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+      if (session && session.expiresAt > Math.floor(Date.now() / 1000)) {
+        return session.userId
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  return null
+}
+
 app.use('/auth/google', (c, next) => {
+
   return googleAuth({
     client_id: c.env.GOOGLE_CLIENT_ID,
     client_secret: c.env.GOOGLE_CLIENT_SECRET,
@@ -78,162 +105,131 @@ app.get('/logout', async (c) => {
 })
 
 app.post('/sessions/:id/delete', async (c) => {
-  const id = c.req.param('id')
-  const sessionId = getCookie(c, 'session')
-  if (sessionId) {
-    try {
-      const payload = await verify(sessionId, c.env.COOKIE_SECRET, 'HS256')
-      const currentSessionId = payload.id as string
-      const db = drizzle(c.env.DB)
+  const userId = await getAuthenticatedUserId(c)
+  if (!userId) return c.redirect('/')
 
-      const currentSession = await db.select().from(sessions).where(eq(sessions.id, currentSessionId)).get()
-      if (currentSession && currentSession.expiresAt > Math.floor(Date.now() / 1000)) {
-        await db.delete(sessions).where(eq(sessions.id, id))
-      }
-    } catch (e) {
-      // ignore
-    }
+  const id = c.req.param('id')
+  const db = drizzle(c.env.DB)
+
+  const sessionToDelete = await db.select().from(sessions).where(eq(sessions.id, id)).get()
+  if (sessionToDelete && sessionToDelete.userId === userId) {
+    await db.delete(sessions).where(eq(sessions.id, id))
   }
   return c.redirect('/')
 })
+
 
 app.post('/api-tokens', async (c) => {
-  const sessionCookie = getCookie(c, 'session')
-  if (sessionCookie) {
-    try {
-      const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
-      const sessionId = payload.id as string
-      const db = drizzle(c.env.DB)
+  const userId = await getAuthenticatedUserId(c)
+  if (!userId) return c.redirect('/')
 
-      const currentSession = await db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
-      if (currentSession && currentSession.expiresAt > Math.floor(Date.now() / 1000)) {
-        const body = await c.req.parseBody()
-        const description = (body['description'] as string) || ''
-        const tokenValue = crypto.randomUUID()
+  const db = drizzle(c.env.DB)
+  const body = await c.req.parseBody()
+  const description = (body['description'] as string) || ''
+  const tokenValue = crypto.randomUUID()
 
-        await db.insert(apiTokens).values({
-          userId: currentSession.userId,
-          token: tokenValue,
-          description,
-          createdAt: Math.floor(Date.now() / 1000),
-        })
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
+  await db.insert(apiTokens).values({
+    userId,
+    token: tokenValue,
+    description,
+    createdAt: Math.floor(Date.now() / 1000),
+  })
   return c.redirect('/')
 })
+
 
 app.post('/api-tokens/:id/delete', async (c) => {
+  const userId = await getAuthenticatedUserId(c)
+  if (!userId) return c.redirect('/')
+
   const id = parseInt(c.req.param('id'), 10)
   if (isNaN(id)) return c.redirect('/')
 
-  const sessionCookie = getCookie(c, 'session')
-  if (sessionCookie) {
-    try {
-      const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
-      const sessionId = payload.id as string
-      const db = drizzle(c.env.DB)
-
-      const currentSession = await db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
-      if (currentSession && currentSession.expiresAt > Math.floor(Date.now() / 1000)) {
-        const tokenToDelete = await db.select().from(apiTokens).where(eq(apiTokens.id, id)).get()
-        if (tokenToDelete && tokenToDelete.userId === currentSession.userId) {
-          await db.delete(apiTokens).where(eq(apiTokens.id, id))
-        }
-      }
-    } catch (e) {
-      // ignore
-    }
+  const db = drizzle(c.env.DB)
+  const tokenToDelete = await db.select().from(apiTokens).where(eq(apiTokens.id, id)).get()
+  if (tokenToDelete && tokenToDelete.userId === userId) {
+    await db.delete(apiTokens).where(eq(apiTokens.id, id))
   }
   return c.redirect('/')
 })
 
-app.post('/ai-bots', async (c) => {
-  const sessionCookie = getCookie(c, 'session')
-  if (sessionCookie) {
-    try {
-      const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
-      const sessionId = payload.id as string
-      const db = drizzle(c.env.DB)
 
-      const currentSession = await db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
-      if (currentSession && currentSession.expiresAt > Math.floor(Date.now() / 1000)) {
-        const body = await c.req.parseBody()
-        const name = (body['name'] as string) || 'Unnamed Bot'
-        const modelName = (body['modelName'] as string) || 'gemini-3-flash-preview'
-        const systemPrompt = (body['systemPrompt'] as string) || ''
+app.get('/api/bots/:id', async (c) => {
+  const userId = await getAuthenticatedUserId(c)
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401)
 
-        await db.insert(aiBots).values({
-          userId: currentSession.userId,
-          name,
-          modelName,
-          systemPrompt,
-          createdAt: Math.floor(Date.now() / 1000),
-        })
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
-  return c.redirect('/')
-})
-
-app.post('/ai-bots/:id/delete', async (c) => {
-  const id = parseInt(c.req.param('id'), 10)
-  if (isNaN(id)) return c.redirect('/')
-
-  const sessionCookie = getCookie(c, 'session')
-  if (sessionCookie) {
-    try {
-      const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
-      const sessionId = payload.id as string
-      const db = drizzle(c.env.DB)
-
-      const currentSession = await db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
-      if (currentSession && currentSession.expiresAt > Math.floor(Date.now() / 1000)) {
-        const botToDelete = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
-        if (botToDelete && botToDelete.userId === currentSession.userId) {
-          await db.delete(aiBots).where(eq(aiBots.id, id))
-        }
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
-  return c.redirect('/')
-})
-
-app.post('/ai-bots/:id/chat', async (c) => {
   const id = parseInt(c.req.param('id'), 10)
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400)
 
-  const sessionCookie = getCookie(c, 'session')
-  if (!sessionCookie) return c.json({ error: 'Unauthorized' }, 401)
+  try {
+    const db = drizzle(c.env.DB)
+    const bot = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
+    if (!bot) return c.json({ error: 'Bot not found' }, 404)
+    if (bot.userId !== userId) return c.json({ error: 'Forbidden' }, 403)
+
+    return c.json(bot)
+  } catch (e: any) {
+    return c.json({ error: 'Internal server error', details: e.message }, 500)
+  }
+})
+
+
+app.post('/ai-bots', async (c) => {
+  const userId = await getAuthenticatedUserId(c)
+  if (!userId) return c.redirect('/')
+
+  const db = drizzle(c.env.DB)
+  const body = await c.req.parseBody()
+  const name = (body['name'] as string) || 'Unnamed Bot'
+  const modelName = (body['modelName'] as string) || 'gemini-3-flash-preview'
+  const systemPrompt = (body['systemPrompt'] as string) || ''
+
+  await db.insert(aiBots).values({
+    userId,
+    name,
+    modelName,
+    systemPrompt,
+    createdAt: Math.floor(Date.now() / 1000),
+  })
+  return c.redirect('/')
+})
+
+
+app.post('/ai-bots/:id/delete', async (c) => {
+  const userId = await getAuthenticatedUserId(c)
+  if (!userId) return c.redirect('/')
+
+  const id = parseInt(c.req.param('id'), 10)
+  if (isNaN(id)) return c.redirect('/')
+
+  const db = drizzle(c.env.DB)
+  const botToDelete = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
+  if (botToDelete && botToDelete.userId === userId) {
+    await db.delete(aiBots).where(eq(aiBots.id, id))
+  }
+  return c.redirect('/')
+})
+
+
+app.post('/ai-bots/:id/chat', async (c) => {
+  const userId = await getAuthenticatedUserId(c)
+  if (!userId) return c.json({ error: 'Unauthorized' }, 401)
+
+  const id = parseInt(c.req.param('id'), 10)
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400)
 
   try {
-    const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
-    const sessionId = payload.id as string
     const db = drizzle(c.env.DB)
-
-    const currentSession = await db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
-    if (!currentSession || currentSession.expiresAt <= Math.floor(Date.now() / 1000)) {
-      return c.json({ error: 'Unauthorized' }, 401)
-    }
-
     const bot = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
-    if (!bot || bot.userId !== currentSession.userId) {
+    if (!bot || bot.userId !== userId) {
       return c.json({ error: 'Not found or not authorized' }, 404)
     }
 
     const body = await c.req.json()
     const history = body.history || []
 
-    // We construct the contents payload for Gemini API
     const contents: any[] = []
 
-    // Add system prompt if it exists
     if (bot.systemPrompt) {
       contents.push({ role: 'user', parts: [{ text: `System Prompt: ${bot.systemPrompt}` }] })
       contents.push({ role: 'model', parts: [{ text: 'Understood.' }] })
@@ -245,7 +241,6 @@ app.post('/ai-bots/:id/chat', async (c) => {
 
     const ai = new GoogleGenAI({ apiKey: c.env.GOOGLE_API_KEY })
 
-    // Create the chat response
     const response = await ai.models.generateContent({
       model: bot.modelName,
       contents,
@@ -281,25 +276,18 @@ app.post('/ai-bots/:id/chat', async (c) => {
   }
 })
 
+
 app.get('/ai-bots/:id/edit', async (c) => {
+  const userId = await getAuthenticatedUserId(c)
+  if (!userId) return c.redirect('/')
+
   const id = parseInt(c.req.param('id'), 10)
   if (isNaN(id)) return c.redirect('/')
 
-  const sessionCookie = getCookie(c, 'session')
-  if (!sessionCookie) return c.redirect('/')
-
   try {
-    const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
-    const sessionId = payload.id as string
     const db = drizzle(c.env.DB)
-
-    const currentSession = await db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
-    if (!currentSession || currentSession.expiresAt <= Math.floor(Date.now() / 1000)) {
-      return c.redirect('/')
-    }
-
     const bot = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
-    if (!bot || bot.userId !== currentSession.userId) {
+    if (!bot || bot.userId !== userId) {
       return c.redirect('/')
     }
 
@@ -308,7 +296,7 @@ app.get('/ai-bots/:id/edit', async (c) => {
       const ai = new GoogleGenAI({ apiKey: c.env.GOOGLE_API_KEY })
       const modelsResp = await ai.models.list()
       for await (const m of modelsResp) {
-        if (m.name && m.name.includes('gemini')) {
+        if (m.name) {
           availableModels.push(m.name)
         }
       }
@@ -410,66 +398,56 @@ app.get('/ai-bots/:id/edit', async (c) => {
 })
 
 app.post('/ai-bots/:id/edit', async (c) => {
+  const userId = await getAuthenticatedUserId(c)
+  if (!userId) return c.redirect('/')
+
   const id = parseInt(c.req.param('id'), 10)
   if (isNaN(id)) return c.redirect('/')
 
-  const sessionCookie = getCookie(c, 'session')
-  if (sessionCookie) {
-    try {
-      const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
-      const sessionId = payload.id as string
-      const db = drizzle(c.env.DB)
+  try {
+    const db = drizzle(c.env.DB)
+    const botToEdit = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
+    if (botToEdit && botToEdit.userId === userId) {
+      const body = await c.req.parseBody()
+      const name = (body['name'] as string) || 'Unnamed Bot'
+      const modelName = (body['modelName'] as string) || 'gemini-3-flash-preview'
+      const systemPrompt = (body['systemPrompt'] as string) || ''
 
-      const currentSession = await db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
-      if (currentSession && currentSession.expiresAt > Math.floor(Date.now() / 1000)) {
-        const botToEdit = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
-        if (botToEdit && botToEdit.userId === currentSession.userId) {
-          const body = await c.req.parseBody()
-          const name = (body['name'] as string) || 'Unnamed Bot'
-          const modelName = (body['modelName'] as string) || 'gemini-3-flash-preview'
-          const systemPrompt = (body['systemPrompt'] as string) || ''
-
-          await db.update(aiBots)
-            .set({ name, modelName, systemPrompt })
-            .where(eq(aiBots.id, id))
-        }
-      }
-    } catch (e) {
-      // ignore
+      await db.update(aiBots)
+        .set({ name, modelName, systemPrompt })
+        .where(eq(aiBots.id, id))
     }
+  } catch (e) {
+    // ignore
   }
   return c.redirect('/')
 })
 
+
 app.post('/ai-bots/:id/update-model', async (c) => {
+  const userId = await getAuthenticatedUserId(c)
+  if (!userId) return c.redirect('/')
+
   const id = parseInt(c.req.param('id'), 10)
   if (isNaN(id)) return c.redirect('/')
 
-  const sessionCookie = getCookie(c, 'session')
-  if (sessionCookie) {
-    try {
-      const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
-      const sessionId = payload.id as string
-      const db = drizzle(c.env.DB)
+  try {
+    const db = drizzle(c.env.DB)
+    const botToEdit = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
+    if (botToEdit && botToEdit.userId === userId) {
+      const body = await c.req.parseBody()
+      const modelName = (body['modelName'] as string) || 'gemini-3-flash-preview'
 
-      const currentSession = await db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
-      if (currentSession && currentSession.expiresAt > Math.floor(Date.now() / 1000)) {
-        const botToEdit = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
-        if (botToEdit && botToEdit.userId === currentSession.userId) {
-          const body = await c.req.parseBody()
-          const modelName = (body['modelName'] as string) || 'gemini-3-flash-preview'
-
-          await db.update(aiBots)
-            .set({ modelName })
-            .where(eq(aiBots.id, id))
-        }
-      }
-    } catch (e) {
-      // ignore
+      await db.update(aiBots)
+        .set({ modelName })
+        .where(eq(aiBots.id, id))
     }
+  } catch (e) {
+    // ignore
   }
   return c.redirect(`/ai-bots/${id}/chat`)
 })
+
 
 app.get('/ai-bots/:id/chat', async (c) => {
   const id = parseInt(c.req.param('id'), 10)
