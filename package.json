@@ -12,6 +12,7 @@
   "dependencies": {
     "@google/genai": "^1.49.0",
     "@hono/oauth-providers": "^0.8.5",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.12"
   },
