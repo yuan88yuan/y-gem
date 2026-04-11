@@ -14,12 +14,12 @@ export const ChatPage = (data: {
       </a>
       <h1>
         <span class="bot-name">${bot.name}</span>
-        <form action="/ai-bots/${bot.id}/update-model" method="POST" style="display:inline-flex; align-items:center; margin-left:0.5rem; gap:0.25rem;">
-          <input type="text" name="modelName" list="available-models" value="${bot.modelName}" style="font-size: 0.875rem; color: var(--text-secondary); background: #e5e7eb; padding: 0.125rem 0.5rem; border-radius: 9999px; border: none; outline: none; max-width: 150px; text-overflow: ellipsis;">
+        <form class="model-form" action="/ai-bots/${bot.id}/update-model" method="POST">
+          <input class="model-input" type="text" name="modelName" list="available-models" value="${bot.modelName}">
           <datalist id="available-models">
             ${availableModels.map((m: string) => html`<option value="${m}"></option>`)}
           </datalist>
-          <button type="submit" style="font-size: 0.75rem; background: var(--button-bg); color: white; border: none; border-radius: 9999px; padding: 0.125rem 0.5rem; cursor: pointer;">Update</button>
+          <button class="model-btn" type="submit">Update</button>
         </form>
       </h1>
       <div style="width: 60px; flex-shrink: 0;"></div>
@@ -60,6 +60,7 @@ export const ChatPage = (data: {
         display: flex;
         flex-direction: column;
         height: 100vh;
+        height: 100dvh;
         overflow: hidden;
       }
       .header {
@@ -82,11 +83,39 @@ export const ChatPage = (data: {
         min-width: 0;
         justify-content: center;
         flex: 1;
+        flex-wrap: wrap;
+        gap: 0.5rem;
       }
       .header .bot-name {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+      .model-form {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+      }
+      .model-input {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        background: #e5e7eb;
+        padding: 0.125rem 0.5rem;
+        border-radius: 9999px;
+        border: none;
+        outline: none;
+        max-width: 150px;
+        text-overflow: ellipsis;
+      }
+      button.model-btn {
+        font-size: 0.75rem;
+        background: var(--button-bg);
+        color: white;
+        border: none;
+        border-radius: 9999px;
+        padding: 0.125rem 0.5rem;
+        cursor: pointer;
+        display: inline-flex;
       }
       .back-link {
         text-decoration: none;
