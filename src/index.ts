@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { html } from 'hono/html'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
+import { streamSSE } from 'hono/streaming'
 import { sign, verify } from 'hono/jwt'
 import { drizzle } from 'drizzle-orm/d1'
 import { eq } from 'drizzle-orm'
@@ -245,36 +246,44 @@ app.post('/ai-bots/:id/chat', async (c) => {
 
     const ai = new GoogleGenAI({ apiKey: c.env.GOOGLE_API_KEY })
 
-    // Create the chat response
-    const response = await ai.models.generateContent({
-      model: bot.modelName,
-      contents,
-      config: {
-        thinkingConfig: {
-          includeThoughts: true,
+    return streamSSE(c, async (stream) => {
+      // Create the chat response
+      const responseStream = await ai.models.generateContentStream({
+        model: bot.modelName,
+        contents,
+        config: {
+          thinkingConfig: {
+            includeThoughts: true,
+          },
         },
-      },
-    })
+      })
 
-    let thoughts = ""
-    let answer = ""
+      for await (const chunk of responseStream) {
+        let chunkThoughts = ""
+        let chunkAnswer = ""
 
-    if (response.candidates && response.candidates.length > 0) {
-      const content = response.candidates[0].content;
-      if (content && content.parts) {
-        for (const part of content.parts) {
-          if (!part.text) {
-            continue
-          } else if ((part as any).thought) {
-            thoughts += part.text
-          } else {
-            answer += part.text
+        if (chunk.candidates && chunk.candidates.length > 0) {
+          const content = chunk.candidates[0].content;
+          if (content && content.parts) {
+            for (const part of content.parts) {
+              if (!part.text) {
+                continue
+              } else if ((part as any).thought) {
+                chunkThoughts += part.text
+              } else {
+                chunkAnswer += part.text
+              }
+            }
           }
         }
-      }
-    }
 
-    return c.json({ answer, thoughts })
+        if (chunkThoughts || chunkAnswer) {
+          await stream.writeSSE({
+            data: JSON.stringify({ thoughts: chunkThoughts, answer: chunkAnswer }),
+          })
+        }
+      }
+    })
   } catch (e: any) {
     console.error(e)
     return c.json({ error: 'Internal server error', details: e.message }, 500)
@@ -971,12 +980,81 @@ app.get('/ai-bots/:id/chat', async (c) => {
                 hideLoading();
                 appendMessage('model', 'Error: ' + res.statusText);
                 history.pop();
-              } else {
-                const data = await res.json();
-                hideLoading();
-                appendMessage('model', data.answer, data.thoughts);
-                history.push({ role: 'model', text: data.answer });
+                input.disabled = false;
+                sendBtn.disabled = false;
+                input.focus();
+                return;
               }
+
+              hideLoading();
+
+              // Create placeholders for the streaming response
+              const wrapper = document.createElement('div');
+              wrapper.className = 'msg-wrapper model';
+
+              const thoughtContainer = document.createElement('div');
+              thoughtContainer.className = 'thought-container';
+              thoughtContainer.style.display = 'none';
+
+              const toggle = document.createElement('div');
+              toggle.className = 'thought-toggle';
+              toggle.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l2-9 4 18 2-9h4"/></svg> Thoughts';
+
+              const thoughtDiv = document.createElement('div');
+              thoughtDiv.className = 'thought';
+
+              toggle.onclick = () => {
+                thoughtDiv.classList.toggle('show');
+              };
+
+              thoughtContainer.appendChild(toggle);
+              thoughtContainer.appendChild(thoughtDiv);
+              wrapper.appendChild(thoughtContainer);
+
+              const msgDiv = document.createElement('div');
+              msgDiv.className = 'msg model';
+              wrapper.appendChild(msgDiv);
+
+              container.appendChild(wrapper);
+
+              let finalAnswer = '';
+              let finalThoughts = '';
+
+              const reader = res.body.getReader();
+              const decoder = new TextDecoder();
+              let buffer = '';
+
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\\n');
+                buffer = lines.pop() || ''; // Keep the incomplete line in the buffer
+
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    try {
+                      const data = JSON.parse(line.slice(6));
+                      if (data.thoughts) {
+                        finalThoughts += data.thoughts;
+                        thoughtContainer.style.display = 'block';
+                        thoughtDiv.innerHTML = finalThoughts.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\\n/g, '<br/>');
+                      }
+                      if (data.answer) {
+                        finalAnswer += data.answer;
+                        msgDiv.innerHTML = formatText(finalAnswer);
+                      }
+                      container.scrollTop = container.scrollHeight;
+                    } catch (e) {
+                      console.error('Error parsing SSE data', e);
+                    }
+                  }
+                }
+              }
+
+              history.push({ role: 'model', text: finalAnswer });
+
             } catch (err) {
               hideLoading();
               appendMessage('model', 'Network error.');
