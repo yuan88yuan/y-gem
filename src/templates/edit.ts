@@ -1,9 +1,11 @@
+import { html } from 'hono/html';
+
 export const EditBotPage = (data: {
   bot: any;
   availableModels: string[];
 }) => {
   const { bot, availableModels } = data;
-  return `
+  return html`
     <main class="max-w-3xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
       <div class="bg-white shadow rounded-xl overflow-hidden border border-gray-100">
         <div class="px-6 py-5 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
@@ -19,7 +21,7 @@ export const EditBotPage = (data: {
               <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
               <input type="text" name="modelName" list="available-models" value="${bot.modelName}" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
               <datalist id="available-models">
-                ${availableModels.map((m: string) => `<option value="${m}"></option>`).join('')}
+                ${availableModels.map((m: string) => html`<option value="${m}"></option>`)}
               </datalist>
             </div>
             <div>

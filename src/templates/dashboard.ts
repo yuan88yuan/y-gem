@@ -1,3 +1,5 @@
+import { html } from 'hono/html';
+
 export const DashboardPage = (data: {
   dbUser: any;
   activeSessions: any[];
@@ -7,7 +9,7 @@ export const DashboardPage = (data: {
   availableModels: string[];
 }) => {
   const { dbUser, activeSessions, tokens, bots, sessionId, availableModels } = data;
-  return `
+  return html`
     <nav class="bg-white shadow-sm border-b border-gray-200">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
@@ -16,7 +18,7 @@ export const DashboardPage = (data: {
           </div>
           <div class="flex items-center space-x-4">
             <div class="flex items-center space-x-2">
-              ${dbUser.picture ? `<img src="${dbUser.picture}" alt="Profile" class="h-8 w-8 rounded-full border border-gray-200" />` : ''}
+              ${dbUser.picture ? html`<img src="${dbUser.picture}" alt="Profile" class="h-8 w-8 rounded-full border border-gray-200" />` : ''}
               <span class="text-sm font-medium text-gray-700 hidden sm:block">${dbUser.name}</span>
             </div>
             <div class="h-6 w-px bg-gray-300"></div>
@@ -41,9 +43,9 @@ export const DashboardPage = (data: {
               </div>
             </div>
             <div class="p-6">
-              ${bots.length === 0 ? `<p class="text-gray-500 text-sm italic mb-4">No bots created yet.</p>` : ''}
+              ${bots.length === 0 ? html`<p class="text-gray-500 text-sm italic mb-4">No bots created yet.</p>` : ''}
               <ul class="divide-y divide-gray-200 mb-6">
-                ${bots.map(b => `
+                ${bots.map(b => html`
                   <li class="py-4 flex justify-between items-center group">
                     <div>
                       <a href="/ai-bots/${b.id}/chat" class="text-lg font-medium text-primary hover:underline">${b.name}</a>
@@ -57,7 +59,7 @@ export const DashboardPage = (data: {
                       </form>
                     </div>
                   </li>
-                `).join('')}
+                `)}
               </ul>
             </div>
           </div>
@@ -84,7 +86,7 @@ export const DashboardPage = (data: {
               <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
               <input type="text" name="modelName" list="available-models" value="gemini-3-flash-preview" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
               <datalist id="available-models">
-                ${availableModels.map(m => `<option value="${m}"></option>`).join('')}
+                ${availableModels.map(m => html`<option value="${m}"></option>`)}
               </datalist>
             </div>
             <div>
@@ -109,9 +111,9 @@ export const DashboardPage = (data: {
           </button>
         </div>
         <div class="p-6 max-h-[70vh] overflow-y-auto">
-          ${tokens.length === 0 ? `<p class="text-gray-500 text-sm italic mb-4">No tokens created.</p>` : ''}
+          ${tokens.length === 0 ? html`<p class="text-gray-500 text-sm italic mb-4">No tokens created.</p>` : ''}
           <ul class="divide-y divide-gray-200 mb-6">
-            ${tokens.map(t => `
+            ${tokens.map(t => html`
               <li class="py-3">
                 <div class="flex justify-between items-start">
                   <div class="break-all pr-4">
@@ -123,7 +125,7 @@ export const DashboardPage = (data: {
                   </form>
                 </div>
               </li>
-            `).join('')}
+            `)}
           </ul>
 
           <div class="mt-4 pt-4 border-t border-gray-100">
@@ -151,22 +153,22 @@ export const DashboardPage = (data: {
         </div>
         <div class="p-6 max-h-[70vh] overflow-y-auto">
           <ul class="divide-y divide-gray-200">
-            ${activeSessions.map(s => `
+            ${activeSessions.map(s => html`
               <li class="py-3 flex justify-between items-center">
                 <div>
                   <p class="text-sm font-medium text-gray-800">
                     ${s.id.substring(0, 8)}...
-                    ${s.id === sessionId ? `<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Current</span>` : ''}
+                    ${s.id === sessionId ? html`<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Current</span>` : ''}
                   </p>
                   <p class="text-xs text-gray-500 mt-1">Expires: ${new Date(s.expiresAt * 1000).toLocaleDateString()}</p>
                 </div>
-                ${s.id !== sessionId ? `
+                ${s.id !== sessionId ? html`
                 <form action="/sessions/${s.id}/delete" method="POST">
                   <button type="submit" class="text-xs text-red-600 hover:text-red-800 hover:underline">Revoke</button>
                 </form>
                 ` : ''}
               </li>
-            `).join('')}
+            `)}
           </ul>
         </div>
       </div>
