@@ -3,15 +3,15 @@ import { html } from 'hono/html'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { streamSSE } from 'hono/streaming'
 import { sign, verify } from 'hono/jwt'
-import { drizzle } from 'drizzle-orm/d1'
-import { eq } from 'drizzle-orm'
 import { googleAuth } from '@hono/oauth-providers/google'
-import { users, sessions, apiTokens, aiBots } from './db/schema'
 import { GoogleGenAI } from '@google/genai'
 import { Layout } from './templates/layout'
 import { DashboardPage } from './templates/dashboard'
 import { ChatPage } from './templates/chat'
 import { EditBotPage } from './templates/edit'
+
+import { dbApi } from './api/db'
+import { DbClient } from './api/client'
 
 type Bindings = {
   DB: D1Database
@@ -22,13 +22,14 @@ type Bindings = {
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
+app.route('/api/internal/db', dbApi)
 
 async function getAuthenticatedUserId(c: any) {
-  const db = drizzle(c.env.DB)
+  const dbClient = new DbClient(app, c.env)
 
   const tokenValue = c.req.header('Authorization')?.replace('Bearer ', '')
   if (tokenValue) {
-    const tokenData = await db.select().from(apiTokens).where(eq(apiTokens.token, tokenValue)).get()
+    const tokenData = await dbClient.getApiTokenByValue(tokenValue)
     if (tokenData) return tokenData.userId
   }
 
@@ -37,7 +38,7 @@ async function getAuthenticatedUserId(c: any) {
     try {
       const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
       const sessionId = payload.id as string
-      const session = await db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+      const session = await dbClient.getSessionById(sessionId)
       if (session && session.expiresAt > Math.floor(Date.now() / 1000)) {
         return session.userId
       }
@@ -64,28 +65,23 @@ app.get('/auth/google', async (c) => {
     return c.redirect('/')
   }
 
-  const db = drizzle(c.env.DB)
+  const dbClient = new DbClient(app, c.env)
 
-  let dbUser = await db.select().from(users).where(eq(users.googleId, user.id!)).get()
+  let dbUser = await dbClient.getUserByGoogleId(user.id!)
 
   if (!dbUser) {
-    const result = await db.insert(users).values({
-      googleId: user.id!,
-      email: user.email!,
-      name: user.name!,
-      picture: user.picture || null,
-    }).returning().get()
-    dbUser = result
+    dbUser = await dbClient.createUser(
+      user.id!,
+      user.email!,
+      user.name!,
+      user.picture || null
+    )
   }
 
   const sessionId = crypto.randomUUID()
   const expiresAt = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 7 // 7 days
 
-  await db.insert(sessions).values({
-    id: sessionId,
-    userId: dbUser.id,
-    expiresAt,
-  })
+  await dbClient.createSession(sessionId, dbUser.id, expiresAt)
 
   const token = await sign({ id: sessionId, exp: expiresAt }, c.env.COOKIE_SECRET)
   setCookie(c, 'session', token)
@@ -99,8 +95,8 @@ app.get('/logout', async (c) => {
     try {
       const payload = await verify(sessionId, c.env.COOKIE_SECRET, 'HS256')
       const id = payload.id as string
-      const db = drizzle(c.env.DB)
-      await db.delete(sessions).where(eq(sessions.id, id))
+      const dbClient = new DbClient(app, c.env)
+      await dbClient.deleteSession(id)
     } catch (e) {
       // ignore
     }
@@ -114,11 +110,11 @@ app.post('/sessions/:id/delete', async (c) => {
   if (!userId) return c.redirect('/')
 
   const id = c.req.param('id')
-  const db = drizzle(c.env.DB)
+  const dbClient = new DbClient(app, c.env)
 
-  const sessionToDelete = await db.select().from(sessions).where(eq(sessions.id, id)).get()
+  const sessionToDelete = await dbClient.getSessionById(id)
   if (sessionToDelete && sessionToDelete.userId === userId) {
-    await db.delete(sessions).where(eq(sessions.id, id))
+    await dbClient.deleteSession(id)
   }
   return c.redirect('/')
 })
@@ -128,17 +124,17 @@ app.post('/api-tokens', async (c) => {
   const userId = await getAuthenticatedUserId(c)
   if (!userId) return c.redirect('/')
 
-  const db = drizzle(c.env.DB)
+  const dbClient = new DbClient(app, c.env)
   const body = await c.req.parseBody()
   const description = (body['description'] as string) || ''
   const tokenValue = crypto.randomUUID()
 
-  await db.insert(apiTokens).values({
+  await dbClient.createApiToken(
     userId,
-    token: tokenValue,
+    tokenValue,
     description,
-    createdAt: Math.floor(Date.now() / 1000),
-  })
+    Math.floor(Date.now() / 1000)
+  )
   return c.redirect('/')
 })
 
@@ -150,10 +146,13 @@ app.post('/api-tokens/:id/delete', async (c) => {
   const id = parseInt(c.req.param('id'), 10)
   if (isNaN(id)) return c.redirect('/')
 
-  const db = drizzle(c.env.DB)
-  const tokenToDelete = await db.select().from(apiTokens).where(eq(apiTokens.id, id)).get()
-  if (tokenToDelete && tokenToDelete.userId === userId) {
-    await db.delete(apiTokens).where(eq(apiTokens.id, id))
+  const dbClient = new DbClient(app, c.env)
+  // Need to get the token to verify ownership, but we don't have a getApiTokenById method in DbClient
+  // We can fetch all tokens for user and see if it's there
+  const userTokens = await dbClient.getApiTokensByUserId(userId)
+  const tokenToDelete = userTokens.find((t: any) => t.id === id)
+  if (tokenToDelete) {
+    await dbClient.deleteApiToken(id)
   }
   return c.redirect('/')
 })
@@ -167,8 +166,8 @@ app.get('/api/bots/:id', async (c) => {
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400)
 
   try {
-    const db = drizzle(c.env.DB)
-    const bot = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
+    const dbClient = new DbClient(app, c.env)
+    const bot = await dbClient.getBotById(id)
     if (!bot) return c.json({ error: 'Bot not found' }, 404)
     if (bot.userId !== userId) return c.json({ error: 'Forbidden' }, 403)
 
@@ -183,19 +182,19 @@ app.post('/ai-bots', async (c) => {
   const userId = await getAuthenticatedUserId(c)
   if (!userId) return c.redirect('/')
 
-  const db = drizzle(c.env.DB)
+  const dbClient = new DbClient(app, c.env)
   const body = await c.req.parseBody()
   const name = (body['name'] as string) || 'Unnamed Bot'
   const modelName = (body['modelName'] as string) || 'gemini-3-flash-preview'
   const systemPrompt = (body['systemPrompt'] as string) || ''
 
-  await db.insert(aiBots).values({
+  await dbClient.createBot(
     userId,
     name,
     modelName,
     systemPrompt,
-    createdAt: Math.floor(Date.now() / 1000),
-  })
+    Math.floor(Date.now() / 1000)
+  )
   return c.redirect('/')
 })
 
@@ -207,10 +206,10 @@ app.post('/ai-bots/:id/delete', async (c) => {
   const id = parseInt(c.req.param('id'), 10)
   if (isNaN(id)) return c.redirect('/')
 
-  const db = drizzle(c.env.DB)
-  const botToDelete = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
+  const dbClient = new DbClient(app, c.env)
+  const botToDelete = await dbClient.getBotById(id)
   if (botToDelete && botToDelete.userId === userId) {
-    await db.delete(aiBots).where(eq(aiBots.id, id))
+    await dbClient.deleteBot(id)
   }
   return c.redirect('/')
 })
@@ -224,8 +223,8 @@ app.post('/ai-bots/:id/chat', async (c) => {
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400)
 
   try {
-    const db = drizzle(c.env.DB)
-    const bot = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
+    const dbClient = new DbClient(app, c.env)
+    const bot = await dbClient.getBotById(id)
     if (!bot || bot.userId !== userId) {
       return c.json({ error: 'Not found or not authorized' }, 404)
     }
@@ -300,8 +299,8 @@ app.get('/ai-bots/:id/edit', async (c) => {
   if (isNaN(id)) return c.redirect('/')
 
   try {
-    const db = drizzle(c.env.DB)
-    const bot = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
+    const dbClient = new DbClient(app, c.env)
+    const bot = await dbClient.getBotById(id)
     if (!bot || bot.userId !== userId) {
       return c.redirect('/')
     }
@@ -342,17 +341,15 @@ app.post('/ai-bots/:id/edit', async (c) => {
   if (isNaN(id)) return c.redirect('/')
 
   try {
-    const db = drizzle(c.env.DB)
-    const botToEdit = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
+    const dbClient = new DbClient(app, c.env)
+    const botToEdit = await dbClient.getBotById(id)
     if (botToEdit && botToEdit.userId === userId) {
       const body = await c.req.parseBody()
       const name = (body['name'] as string) || 'Unnamed Bot'
       const modelName = (body['modelName'] as string) || 'gemini-3-flash-preview'
       const systemPrompt = (body['systemPrompt'] as string) || ''
 
-      await db.update(aiBots)
-        .set({ name, modelName, systemPrompt })
-        .where(eq(aiBots.id, id))
+      await dbClient.updateBot(id, { name, modelName, systemPrompt })
     }
   } catch (e) {
     // ignore
@@ -369,15 +366,13 @@ app.post('/ai-bots/:id/update-model', async (c) => {
   if (isNaN(id)) return c.redirect('/')
 
   try {
-    const db = drizzle(c.env.DB)
-    const botToEdit = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
+    const dbClient = new DbClient(app, c.env)
+    const botToEdit = await dbClient.getBotById(id)
     if (botToEdit && botToEdit.userId === userId) {
       const body = await c.req.parseBody()
       const modelName = (body['modelName'] as string) || 'gemini-3-flash-preview'
 
-      await db.update(aiBots)
-        .set({ modelName })
-        .where(eq(aiBots.id, id))
+      await dbClient.updateBot(id, { modelName })
     }
   } catch (e) {
     // ignore
@@ -396,14 +391,14 @@ app.get('/ai-bots/:id/chat', async (c) => {
   try {
     const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
     const sessionId = payload.id as string
-    const db = drizzle(c.env.DB)
+    const dbClient = new DbClient(app, c.env)
 
-    const currentSession = await db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+    const currentSession = await dbClient.getSessionById(sessionId)
     if (!currentSession || currentSession.expiresAt <= Math.floor(Date.now() / 1000)) {
       return c.redirect('/')
     }
 
-    const bot = await db.select().from(aiBots).where(eq(aiBots.id, id)).get()
+    const bot = await dbClient.getBotById(id)
     if (!bot || bot.userId !== currentSession.userId) {
       return c.redirect('/')
     }
@@ -439,7 +434,7 @@ app.get('/ai-bots/:id/chat', async (c) => {
 })
 
 app.get('/', async (c) => {
-  const db = drizzle(c.env.DB)
+  const dbClient = new DbClient(app, c.env)
 
   const sessionCookie = getCookie(c, 'session')
 
@@ -453,15 +448,15 @@ app.get('/', async (c) => {
     }
 
     if (sessionId !== undefined) {
-      const session = await db.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+      const session = await dbClient.getSessionById(sessionId)
 
       if (session && session.expiresAt > Math.floor(Date.now() / 1000)) {
-        const dbUser = await db.select().from(users).where(eq(users.id, session.userId)).get()
+        const dbUser = await dbClient.getUserById(session.userId)
 
         if (dbUser) {
-          const activeSessions = await db.select().from(sessions).where(eq(sessions.userId, dbUser.id)).all()
-          const tokens = await db.select().from(apiTokens).where(eq(apiTokens.userId, dbUser.id)).all()
-          const bots = await db.select().from(aiBots).where(eq(aiBots.userId, dbUser.id)).all()
+          const activeSessions = await dbClient.getSessionsByUserId(dbUser.id)
+          const tokens = await dbClient.getApiTokensByUserId(dbUser.id)
+          const bots = await dbClient.getBotsByUserId(dbUser.id)
 
           let availableModels: string[] = []
           try {
