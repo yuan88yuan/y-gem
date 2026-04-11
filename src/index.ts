@@ -280,39 +280,12 @@ app.post('/ai-bots/:id/chat', async (c) => {
         }
       }
     })
-
-
-      for await (const chunk of responseStream) {
-        let chunkThoughts = ""
-        let chunkAnswer = ""
-
-        if (chunk.candidates && chunk.candidates.length > 0) {
-          const content = chunk.candidates[0].content;
-          if (content && content.parts) {
-            for (const part of content.parts) {
-              if (!part.text) {
-                continue
-              } else if ((part as any).thought) {
-                chunkThoughts += part.text
-              } else {
-                chunkAnswer += part.text
-              }
-            }
-          }
-        }
-
-        if (chunkThoughts || chunkAnswer) {
-          await stream.writeSSE({
-            data: JSON.stringify({ thoughts: chunkThoughts, answer: chunkAnswer }),
-          })
-        }
-      }
-    })
   } catch (e: any) {
     console.error(e)
     return c.json({ error: 'Internal server error', details: e.message }, 500)
   }
 })
+
 
 
 app.get('/ai-bots/:id/edit', async (c) => {
