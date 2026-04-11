@@ -6,6 +6,7 @@ export const ChatPage = (data: {
 }) => {
   const { bot, availableModels } = data;
   return html`
+    <div class="chat-layout">
     <div class="header">
       <a href="/" class="back-link">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -36,8 +37,31 @@ export const ChatPage = (data: {
         </button>
       </form>
     </div>
+    </div>
 
     <style>
+      :root {
+        --chat-bg: #ffffff;
+        --border-color: #e5e7eb;
+        --text-primary: #111827;
+        --text-secondary: #4b5563;
+        --button-bg: #2563eb;
+        --button-hover: #1d4ed8;
+        --user-msg-bg: #eff6ff;
+        --user-msg-text: #1e3a8a;
+        --bot-msg-bg: #f3f4f6;
+        --bot-msg-text: #1f2937;
+        --thought-bg: #fffbeb;
+        --thought-text: #92400e;
+        --input-bg: #ffffff;
+        --focus-ring: #60a5fa;
+      }
+      .chat-layout {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+      }
       .header {
         display: flex;
         align-items: center;
