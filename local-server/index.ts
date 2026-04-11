@@ -40,24 +40,23 @@ async function remoteFetch(endpoint: string, options: any = {}) {
 
 app.get('/', async (req, res) => {
     try {
-        const tokenResp = await remoteFetch('/api/internal/db/tokens?token=' + YGEM_API_TOKEN);
-        const tokens = tokenResp.data;
-        if (!tokens || tokens.length === 0) {
+        const tokenResp = await remoteFetch(`/api/internal/db/api-tokens/token/${YGEM_API_TOKEN}`);
+        const token = tokenResp.data;
+        if (!token) {
             return res.status(401).send('Invalid or missing YGEM_API_TOKEN');
         }
-        const token = tokens[0];
         const userId = token.userId;
 
-        const userResp = await remoteFetch(`/api/internal/db/users?id=${userId}`);
-        const dbUser = userResp.data[0];
+        const userResp = await remoteFetch(`/api/internal/db/users/${userId}`);
+        const dbUser = userResp.data;
 
-        const sessionsResp = await remoteFetch(`/api/internal/db/sessions?userId=${userId}`);
+        const sessionsResp = await remoteFetch(`/api/internal/db/sessions/user/${userId}`);
         const activeSessions = sessionsResp.data;
 
-        const userTokensResp = await remoteFetch(`/api/internal/db/tokens?userId=${userId}`);
+        const userTokensResp = await remoteFetch(`/api/internal/db/api-tokens/user/${userId}`);
         const userTokens = userTokensResp.data;
 
-        const botsResp = await remoteFetch(`/api/internal/db/bots?userId=${userId}`);
+        const botsResp = await remoteFetch(`/api/internal/db/ai-bots/user/${userId}`);
         const bots = botsResp.data;
 
         let availableModels: string[] = []
@@ -176,7 +175,7 @@ app.post('/ai-bots/:id/chat', async (req, res) => {
     const botId = req.params.id;
     const history = req.body.history || [];
 
-    console.log(`[Local Server] Intercepted message for bot ${botId}:`, history[history.length - 1]);
+    // console.log(`[Local Server] Intercepted message for bot ${botId}:`, history[history.length - 1]);
 
     try {
         const remoteBot = await remoteFetch(`/api/bots/${botId}`);
@@ -241,7 +240,7 @@ app.post('/ai-bots/:id/chat', async (req, res) => {
     }
 });
 
-app.get('/chat/:id', async (req, res) => {
+app.get('/ai-bots/:id/chat', async (req, res) => {
     const botId = req.params.id;
     try {
         const remoteBot = await remoteFetch(`/api/bots/${botId}`);
@@ -279,7 +278,7 @@ app.get('/chat/:id', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`\x1b[32mLocal Proxy Server (TSX) running at http://localhost:${PORT}\x1b[0m`);
+    console.log(`\x1b[32mLocal Y-Gem Server running at http://localhost:${PORT}\x1b[0m`);
     console.log(`Remote URL: ${YGEM_SERVER_URL}`);
 });
 
