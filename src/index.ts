@@ -60,7 +60,13 @@ app.get('/auth/google', async (c) => {
   await dbClient.createSession(sessionId, dbUser.id, expiresAt)
 
   const token = await sign({ id: sessionId, exp: expiresAt }, c.env.COOKIE_SECRET)
-  setCookie(c, 'session', token)
+  setCookie(c, 'session', token, {
+    maxAge: 60 * 60 * 24 * 7, // 7 days
+    path: '/',
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Lax',
+  })
 
   return c.redirect('/')
 })
