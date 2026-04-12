@@ -72,7 +72,7 @@ export const DashboardPage = (data: {
       <div class="bg-white rounded-xl shadow-xl overflow-hidden max-w-md w-full">
         <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <h3 class="text-lg font-medium text-gray-900">Create New Bot</h3>
-          <button onclick="closeModal('create-bot-modal')" class="text-gray-400 hover:text-gray-500">
+          <button onclick="closeModal('create-bot-modal')" class="text-gray-400 hover:text-gray-500" aria-label="Close modal">
             <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
         </div>
@@ -106,7 +106,7 @@ export const DashboardPage = (data: {
       <div class="bg-white rounded-xl shadow-xl overflow-hidden max-w-md w-full">
         <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <h3 class="text-lg font-medium text-gray-900">API Tokens</h3>
-          <button onclick="closeModal('api-keys-modal')" class="text-gray-400 hover:text-gray-500">
+          <button onclick="closeModal('api-keys-modal')" class="text-gray-400 hover:text-gray-500" aria-label="Close modal">
             <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
         </div>
@@ -147,7 +147,7 @@ export const DashboardPage = (data: {
       <div class="bg-white rounded-xl shadow-xl overflow-hidden max-w-md w-full">
         <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <h3 class="text-lg font-medium text-gray-900">Active Sessions</h3>
-          <button onclick="closeModal('sessions-modal')" class="text-gray-400 hover:text-gray-500">
+          <button onclick="closeModal('sessions-modal')" class="text-gray-400 hover:text-gray-500" aria-label="Close modal">
             <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
         </div>
