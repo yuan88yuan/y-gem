@@ -7,7 +7,8 @@
     "build": "npm run cf-typegen && tsc --noEmit",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "wrangler d1 migrations apply y-gem-db --remote"
+    "db:migrate": "wrangler d1 migrations apply y-gem-db --remote",
+    "local-server": "cd local-server && tsx index.ts"
   },
   "dependencies": {
     "@google/genai": "^1.49.0",
