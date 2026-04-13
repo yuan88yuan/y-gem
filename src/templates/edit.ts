@@ -14,19 +14,19 @@ export const EditBotPage = (data: {
         <div class="p-6">
           <form action="/ai-bots/${bot.id}/edit" method="POST" class="space-y-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
-              <input type="text" name="name" value="${bot.name}" required class="w-full rounded-md shadow-sm sm:text-sm" />
+              <label for="edit-bot-name" class="block text-sm font-medium text-gray-700 mb-1">Name <span class="text-red-500" aria-hidden="true">*</span></label>
+              <input id="edit-bot-name" type="text" name="name" value="${bot.name}" required class="w-full rounded-md shadow-sm sm:text-sm" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
-              <input type="text" name="modelName" list="available-models" value="${bot.modelName}" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
+              <label for="edit-bot-model" class="block text-sm font-medium text-gray-700 mb-1">Model <span class="text-red-500" aria-hidden="true">*</span></label>
+              <input id="edit-bot-model" type="text" name="modelName" list="available-models" value="${bot.modelName}" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
               <datalist id="available-models">
                 ${availableModels.map((m: string) => html`<option value="${m}"></option>`)}
               </datalist>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">System Prompt</label>
-              <textarea name="systemPrompt" rows="5" class="w-full rounded-md shadow-sm sm:text-sm">${bot.systemPrompt || ''}</textarea>
+              <label for="edit-bot-system-prompt" class="block text-sm font-medium text-gray-700 mb-1">System Prompt</label>
+              <textarea id="edit-bot-system-prompt" name="systemPrompt" rows="5" class="w-full rounded-md shadow-sm sm:text-sm">${bot.systemPrompt || ''}</textarea>
             </div>
             <div class="flex items-center gap-4">
               <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-colors">
