@@ -2,7 +2,6 @@ import { Hono } from 'hono'
 import { html } from 'hono/html'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { streamSSE } from 'hono/streaming'
-import { sign, verify } from 'hono/jwt'
 import { googleAuth } from '@hono/oauth-providers/google'
 import { GoogleGenAI } from '@google/genai'
 import { Layout } from './templates/layout'
@@ -104,8 +103,7 @@ app.get('/auth/google', async (c) => {
 
   await dbClient.createSession(sessionId, dbUser.id, expiresAt)
 
-  const token = await sign({ id: sessionId, exp: expiresAt }, c.env.COOKIE_SECRET)
-  setCookie(c, 'session', token, {
+  setCookie(c, 'session', sessionId, {
     maxAge: 60 * 60 * 24 * 7, // 7 days
     path: '/',
     httpOnly: true,
@@ -120,10 +118,8 @@ app.get('/logout', async (c) => {
   const sessionId = getCookie(c, 'session')
   if (sessionId) {
     try {
-      const payload = await verify(sessionId, c.env.COOKIE_SECRET, 'HS256')
-      const id = payload.id as string
       const dbClient = new DbClient(app, c.env)
-      await dbClient.deleteSession(id)
+      await dbClient.deleteSession(sessionId)
     } catch (e) {
       // ignore
     }
@@ -412,12 +408,10 @@ app.get('/ai-bots/:id/chat', async (c) => {
   const id = parseInt(c.req.param('id'), 10)
   if (isNaN(id)) return c.redirect('/')
 
-  const sessionCookie = getCookie(c, 'session')
-  if (!sessionCookie) return c.redirect('/')
+  const sessionId = getCookie(c, 'session')
+  if (!sessionId) return c.redirect('/')
 
   try {
-    const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
-    const sessionId = payload.id as string
     const dbClient = new DbClient(app, c.env)
 
     const currentSession = await dbClient.getSessionById(sessionId)
@@ -463,57 +457,47 @@ app.get('/ai-bots/:id/chat', async (c) => {
 app.get('/', async (c) => {
   const dbClient = new DbClient(app, c.env)
 
-  const sessionCookie = getCookie(c, 'session')
+  const sessionId = getCookie(c, 'session')
 
-  if (sessionCookie) {
-    let sessionId: string | undefined
-    try {
-      const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
-      sessionId = payload.id as string
-    } catch (e) {
-      // Invalid token
-    }
+  if (sessionId) {
+    const session = await dbClient.getSessionById(sessionId)
 
-    if (sessionId !== undefined) {
-      const session = await dbClient.getSessionById(sessionId)
+    if (session && session.expiresAt > Math.floor(Date.now() / 1000)) {
+      const dbUser = await dbClient.getUserById(session.userId)
 
-      if (session && session.expiresAt > Math.floor(Date.now() / 1000)) {
-        const dbUser = await dbClient.getUserById(session.userId)
+      if (dbUser) {
+        const activeSessions = await dbClient.getSessionsByUserId(dbUser.id)
+        const tokens = await dbClient.getApiTokensByUserId(dbUser.id)
+        const bots = await dbClient.getBotsByUserId(dbUser.id)
 
-        if (dbUser) {
-          const activeSessions = await dbClient.getSessionsByUserId(dbUser.id)
-          const tokens = await dbClient.getApiTokensByUserId(dbUser.id)
-          const bots = await dbClient.getBotsByUserId(dbUser.id)
-
-          let availableModels: string[] = []
-          try {
-            const ai = new GoogleGenAI({ apiKey: c.env.GOOGLE_API_KEY })
-            const modelsResp = await ai.models.list()
-            for await (const m of modelsResp) {
-              if (m.name) {
-                availableModels.push(m.name.replace(/^models\//, ''))
-              }
+        let availableModels: string[] = []
+        try {
+          const ai = new GoogleGenAI({ apiKey: c.env.GOOGLE_API_KEY })
+          const modelsResp = await ai.models.list()
+          for await (const m of modelsResp) {
+            if (m.name) {
+              availableModels.push(m.name.replace(/^models\//, ''))
             }
-          } catch (e) {
-            // Fallback if API key is invalid or network fails
-            availableModels = [
-              'gemini-3-flash-preview',
-              'gemini-2.5-flash',
-              'gemini-2.5-pro',
-              'gemini-2.0-flash',
-              'gemini-2.0-pro-exp',
-            ]
           }
-
-          return c.html(html`${Layout('y-gem Dashboard', DashboardPage({
-            dbUser,
-            activeSessions,
-            tokens,
-            bots,
-            sessionId,
-            availableModels,
-          }))}`)
+        } catch (e) {
+          // Fallback if API key is invalid or network fails
+          availableModels = [
+            'gemini-3-flash-preview',
+            'gemini-2.5-flash',
+            'gemini-2.5-pro',
+            'gemini-2.0-flash',
+            'gemini-2.0-pro-exp',
+          ]
         }
+
+        return c.html(html`${Layout('y-gem Dashboard', DashboardPage({
+          dbUser,
+          activeSessions,
+          tokens,
+          bots,
+          sessionId,
+          availableModels,
+        }))}`)
       }
     }
   }
