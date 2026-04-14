@@ -2,7 +2,6 @@ import { Hono } from 'hono'
 import { html } from 'hono/html'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { streamSSE } from 'hono/streaming'
-import { sign, verify } from 'hono/jwt'
 import { googleAuth } from '@hono/oauth-providers/google'
 import { GoogleGenAI } from '@google/genai'
 import { Layout } from './templates/layout'
@@ -104,8 +103,7 @@ app.get('/auth/google', async (c) => {
 
   await dbClient.createSession(sessionId, dbUser.id, expiresAt)
 
-  const token = await sign({ id: sessionId, exp: expiresAt }, c.env.COOKIE_SECRET)
-  setCookie(c, 'session', token, {
+  setCookie(c, 'session', sessionId, {
     maxAge: 60 * 60 * 24 * 7, // 7 days
     path: '/',
     httpOnly: true,
@@ -120,10 +118,8 @@ app.get('/logout', async (c) => {
   const sessionId = getCookie(c, 'session')
   if (sessionId) {
     try {
-      const payload = await verify(sessionId, c.env.COOKIE_SECRET, 'HS256')
-      const id = payload.id as string
       const dbClient = new DbClient(app, c.env)
-      await dbClient.deleteSession(id)
+      await dbClient.deleteSession(sessionId)
     } catch (e) {
       // ignore
     }
@@ -412,12 +408,10 @@ app.get('/ai-bots/:id/chat', async (c) => {
   const id = parseInt(c.req.param('id'), 10)
   if (isNaN(id)) return c.redirect('/')
 
-  const sessionCookie = getCookie(c, 'session')
-  if (!sessionCookie) return c.redirect('/')
+  const sessionId = getCookie(c, 'session')
+  if (!sessionId) return c.redirect('/')
 
   try {
-    const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
-    const sessionId = payload.id as string
     const dbClient = new DbClient(app, c.env)
 
     const currentSession = await dbClient.getSessionById(sessionId)
@@ -463,17 +457,9 @@ app.get('/ai-bots/:id/chat', async (c) => {
 app.get('/', async (c) => {
   const dbClient = new DbClient(app, c.env)
 
-  const sessionCookie = getCookie(c, 'session')
+  const sessionId = getCookie(c, 'session')
 
-  if (sessionCookie) {
-    let sessionId: string | undefined
-    try {
-      const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
-      sessionId = payload.id as string
-    } catch (e) {
-      // Invalid token
-    }
-
+  if (sessionId) {
     if (sessionId !== undefined) {
       const session = await dbClient.getSessionById(sessionId)
 
