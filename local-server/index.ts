@@ -50,9 +50,6 @@ app.get('/', async (req, res) => {
         const userResp = await remoteFetch(`/api/internal/db/users/${userId}`);
         const dbUser = userResp.data;
 
-        const sessionsResp = await remoteFetch(`/api/internal/db/sessions/user/${userId}`);
-        const activeSessions = sessionsResp.data;
-
         const userTokensResp = await remoteFetch(`/api/internal/db/api-tokens/user/${userId}`);
         const userTokens = userTokensResp.data;
 
@@ -80,7 +77,6 @@ app.get('/', async (req, res) => {
 
         const content = await DashboardPage({ 
             dbUser, 
-            activeSessions, 
             tokens: userTokens, 
             bots, 
             sessionId: 'local-session', 

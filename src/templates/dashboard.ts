@@ -2,13 +2,12 @@ import { html } from 'hono/html';
 
 export const DashboardPage = (data: {
   dbUser: any;
-  activeSessions: any[];
   tokens: any[];
   bots: any[];
   sessionId: string;
   availableModels: string[];
 }) => {
-  const { dbUser, activeSessions, tokens, bots, sessionId, availableModels } = data;
+  const { dbUser, tokens, bots, sessionId, availableModels } = data;
   return html`
     <nav class="bg-white shadow-sm border-b border-gray-200">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -39,7 +38,6 @@ export const DashboardPage = (data: {
               <div class="flex space-x-2">
                 <button onclick="openModal('create-bot-modal')" class="text-sm bg-primary text-white hover:bg-primary-hover px-3 py-1.5 rounded-md font-medium transition-colors">Create Bot</button>
                 <button onclick="openModal('api-keys-modal')" class="text-sm bg-gray-800 text-white hover:bg-gray-900 px-3 py-1.5 rounded-md font-medium transition-colors">API Keys</button>
-                <button onclick="openModal('sessions-modal')" class="text-sm bg-gray-200 text-gray-800 hover:bg-gray-300 px-3 py-1.5 rounded-md font-medium transition-colors">Sessions</button>
               </div>
             </div>
             <div class="p-6">
@@ -139,37 +137,6 @@ export const DashboardPage = (data: {
               </button>
             </form>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <div id="sessions-modal" class="fixed inset-0 bg-gray-500 bg-opacity-75 hidden flex items-center justify-center z-50">
-      <div class="bg-white rounded-xl shadow-xl overflow-hidden max-w-md w-full">
-        <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-          <h3 class="text-lg font-medium text-gray-900">Active Sessions</h3>
-          <button onclick="closeModal('sessions-modal')" class="text-gray-400 hover:text-gray-500" aria-label="Close modal">
-            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-          </button>
-        </div>
-        <div class="p-6 max-h-[70vh] overflow-y-auto">
-          <ul class="divide-y divide-gray-200">
-            ${activeSessions.map(s => html`
-              <li class="py-3 flex justify-between items-center">
-                <div>
-                  <p class="text-sm font-medium text-gray-800">
-                    ${s.id.substring(0, 8)}...
-                    ${s.id === sessionId ? html`<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">Current</span>` : ''}
-                  </p>
-                  <p class="text-xs text-gray-500 mt-1">Expires: ${new Date(s.expiresAt * 1000).toLocaleDateString()}</p>
-                </div>
-                ${s.id !== sessionId ? html`
-                <form action="/sessions/${s.id}/delete" method="POST">
-                  <button type="submit" class="text-xs text-red-600 hover:text-red-800 hover:underline">Revoke</button>
-                </form>
-                ` : ''}
-              </li>
-            `)}
-          </ul>
         </div>
       </div>
     </div>
