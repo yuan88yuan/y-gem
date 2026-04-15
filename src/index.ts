@@ -467,7 +467,6 @@ app.get('/', async (c) => {
         const dbUser = await dbClient.getUserById(session.userId)
 
         if (dbUser) {
-          const activeSessions = await dbClient.getSessionsByUserId(dbUser.id)
           const tokens = await dbClient.getApiTokensByUserId(dbUser.id)
           const bots = await dbClient.getBotsByUserId(dbUser.id)
 
@@ -493,7 +492,6 @@ app.get('/', async (c) => {
 
           return c.html(html`${Layout('y-gem Dashboard', DashboardPage({
             dbUser,
-            activeSessions,
             tokens,
             bots,
             sessionId,
