@@ -2,7 +2,6 @@ import { Hono } from 'hono'
 import { html } from 'hono/html'
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie'
 import { streamSSE } from 'hono/streaming'
-import { sign, verify } from 'hono/jwt'
 import { googleAuth } from '@hono/oauth-providers/google'
 import { GoogleGenAI } from '@google/genai'
 import { Layout } from './templates/layout'
@@ -25,6 +24,51 @@ const app = new Hono<{ Bindings: Bindings }>()
 app.route('/api/internal/db', dbApi)
 
 import { getAuthenticatedUserId } from './api/auth'
+
+app.get('/manifest.json', (c) => {
+  return c.json({
+    name: 'y-gem',
+    short_name: 'y-gem',
+    start_url: '/',
+    display: 'standalone',
+    background_color: '#f9fafb',
+    theme_color: '#2563eb',
+    icons: [
+      {
+        src: '/icon.svg',
+        sizes: '192x192',
+        type: 'image/svg+xml'
+      },
+      {
+        src: '/icon.svg',
+        sizes: '512x512',
+        type: 'image/svg+xml'
+      }
+    ]
+  })
+})
+
+app.get('/sw.js', (c) => {
+  c.header('Content-Type', 'application/javascript')
+  return c.body(`
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(clients.claim());
+});
+
+self.addEventListener('fetch', (event) => {
+  // Simple pass-through
+});
+`)
+})
+
+app.get('/icon.svg', (c) => {
+  c.header('Content-Type', 'image/svg+xml')
+  return c.body(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="512" height="512"><rect width="24" height="24" fill="#2563eb"/><path fill="#ffffff" d="M12 2L2 22h20L12 2zm0 3.8l6.2 14.2H5.8L12 5.8z"/></svg>`)
+})
 
 app.use('/auth/google', (c, next) => {
 
@@ -59,8 +103,7 @@ app.get('/auth/google', async (c) => {
 
   await dbClient.createSession(sessionId, dbUser.id, expiresAt)
 
-  const token = await sign({ id: sessionId, exp: expiresAt }, c.env.COOKIE_SECRET)
-  setCookie(c, 'session', token, {
+  setCookie(c, 'session', sessionId, {
     maxAge: 60 * 60 * 24 * 7, // 7 days
     path: '/',
     httpOnly: true,
@@ -75,10 +118,8 @@ app.get('/logout', async (c) => {
   const sessionId = getCookie(c, 'session')
   if (sessionId) {
     try {
-      const payload = await verify(sessionId, c.env.COOKIE_SECRET, 'HS256')
-      const id = payload.id as string
       const dbClient = new DbClient(app, c.env)
-      await dbClient.deleteSession(id)
+      await dbClient.deleteSession(sessionId)
     } catch (e) {
       // ignore
     }
@@ -367,12 +408,10 @@ app.get('/ai-bots/:id/chat', async (c) => {
   const id = parseInt(c.req.param('id'), 10)
   if (isNaN(id)) return c.redirect('/')
 
-  const sessionCookie = getCookie(c, 'session')
-  if (!sessionCookie) return c.redirect('/')
+  const sessionId = getCookie(c, 'session')
+  if (!sessionId) return c.redirect('/')
 
   try {
-    const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
-    const sessionId = payload.id as string
     const dbClient = new DbClient(app, c.env)
 
     const currentSession = await dbClient.getSessionById(sessionId)
@@ -418,17 +457,9 @@ app.get('/ai-bots/:id/chat', async (c) => {
 app.get('/', async (c) => {
   const dbClient = new DbClient(app, c.env)
 
-  const sessionCookie = getCookie(c, 'session')
+  const sessionId = getCookie(c, 'session')
 
-  if (sessionCookie) {
-    let sessionId: string | undefined
-    try {
-      const payload = await verify(sessionCookie, c.env.COOKIE_SECRET, 'HS256')
-      sessionId = payload.id as string
-    } catch (e) {
-      // Invalid token
-    }
-
+  if (sessionId) {
     if (sessionId !== undefined) {
       const session = await dbClient.getSessionById(sessionId)
 
@@ -436,7 +467,6 @@ app.get('/', async (c) => {
         const dbUser = await dbClient.getUserById(session.userId)
 
         if (dbUser) {
-          const activeSessions = await dbClient.getSessionsByUserId(dbUser.id)
           const tokens = await dbClient.getApiTokensByUserId(dbUser.id)
           const bots = await dbClient.getBotsByUserId(dbUser.id)
 
@@ -462,7 +492,6 @@ app.get('/', async (c) => {
 
           return c.html(html`${Layout('y-gem Dashboard', DashboardPage({
             dbUser,
-            activeSessions,
             tokens,
             bots,
             sessionId,
@@ -480,7 +509,18 @@ app.get('/', async (c) => {
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>y-gem - Login</title>
+      <link rel="manifest" href="/manifest.json">
+      <meta name="theme-color" content="#2563eb">
+      <link rel="icon" href="/icon.svg" type="image/svg+xml">
+      <link rel="apple-touch-icon" href="/icon.svg">
       <script src="https://cdn.tailwindcss.com"></script>
+      <script>
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch(() => {});
+          });
+        }
+      </script>
     </head>
     <body class="bg-gray-50 flex items-center justify-center min-h-screen font-sans">
       <div class="max-w-md w-full space-y-8 p-10 bg-white rounded-2xl shadow-xl border border-gray-100 text-center">
