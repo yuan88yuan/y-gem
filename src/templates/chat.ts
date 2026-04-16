@@ -57,10 +57,11 @@ export const ChatPage = (data: {
         --focus-ring: #60a5fa;
       }
       .chat-layout {
+        position: fixed;
+        inset: 0;
         display: flex;
         flex-direction: column;
-        height: 100vh;
-        height: 100dvh;
+        background-color: var(--chat-bg);
         overflow: hidden;
       }
       .header {
