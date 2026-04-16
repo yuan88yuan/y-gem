@@ -294,6 +294,7 @@ export const ChatPage = (data: {
       .msg.model p:last-child { margin-bottom: 0; }
       .msg.model code { background: #e5e7eb; padding: 0.1rem 0.3rem; border-radius: 0.25rem; font-family: monospace; font-size: 0.9em; }
       .msg.model pre { background: #1f2937; color: #f8f8f2; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-top: 0.5rem; margin-bottom: 0.5rem; font-family: monospace; font-size: 0.85em; }
+      .msg.model pre code { background: transparent; padding: 0; border-radius: 0; color: inherit; font-size: inherit; }
     </style>
     <script>
       const history = [];
