@@ -41,7 +41,23 @@ export const DashboardPage = (data: {
               </div>
             </div>
             <div class="p-6">
-              ${bots.length === 0 ? html`<p class="text-gray-500 text-sm italic mb-4">No bots created yet.</p>` : ''}
+              ${bots.length === 0 ? html`
+                <div class="text-center py-12 px-4 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 mb-6">
+                  <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                  <h3 class="mt-2 text-sm font-medium text-gray-900">No bots created</h3>
+                  <p class="mt-1 text-sm text-gray-500">Get started by creating your first AI bot.</p>
+                  <div class="mt-6">
+                    <button onclick="openModal('create-bot-modal')" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary">
+                      <svg class="-ml-1 mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                      </svg>
+                      Create Bot
+                    </button>
+                  </div>
+                </div>
+              ` : ''}
               <ul class="divide-y divide-gray-200 mb-6">
                 ${bots.map(b => html`
                   <li class="py-4 flex justify-between items-center group">
@@ -77,19 +93,19 @@ export const DashboardPage = (data: {
         <div class="p-6">
           <form action="/ai-bots" method="POST" class="space-y-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
-              <input type="text" name="name" required class="w-full rounded-md shadow-sm sm:text-sm" placeholder="My Awesome Bot" />
+              <label for="bot-name" class="block text-sm font-medium text-gray-700 mb-1">Name <span class="text-red-500" aria-hidden="true">*</span></label>
+              <input id="bot-name" type="text" name="name" required class="w-full rounded-md shadow-sm sm:text-sm" placeholder="My Awesome Bot" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">Model</label>
-              <input type="text" name="modelName" list="available-models" value="gemini-3-flash-preview" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
+              <label for="bot-model" class="block text-sm font-medium text-gray-700 mb-1">Model <span class="text-red-500" aria-hidden="true">*</span></label>
+              <input id="bot-model" type="text" name="modelName" list="available-models" value="gemini-3-flash-preview" required class="w-full rounded-md shadow-sm sm:text-sm bg-white border border-gray-300 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
               <datalist id="available-models">
                 ${availableModels.map(m => html`<option value="${m}"></option>`)}
               </datalist>
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-700 mb-1">System Prompt</label>
-              <textarea name="systemPrompt" rows="3" class="w-full rounded-md shadow-sm sm:text-sm" placeholder="You are a helpful assistant..."></textarea>
+              <label for="bot-system-prompt" class="block text-sm font-medium text-gray-700 mb-1">System Prompt</label>
+              <textarea id="bot-system-prompt" name="systemPrompt" rows="3" class="w-full rounded-md shadow-sm sm:text-sm" placeholder="You are a helpful assistant..."></textarea>
             </div>
             <div class="mt-5 sm:mt-6 flex space-x-3">
               <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-primary text-base font-medium text-white hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary sm:text-sm transition-colors">Create</button>
@@ -129,8 +145,8 @@ export const DashboardPage = (data: {
           <div class="mt-4 pt-4 border-t border-gray-100">
             <form action="/api-tokens" method="POST" class="space-y-3">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <input type="text" name="description" class="w-full rounded-md shadow-sm sm:text-sm" placeholder="Token description" />
+                <label for="token-description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <input id="token-description" type="text" name="description" class="w-full rounded-md shadow-sm sm:text-sm" placeholder="Token description" />
               </div>
               <button type="submit" class="w-full inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gray-800 hover:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 transition-colors">
                 Generate Token
