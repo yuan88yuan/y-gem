@@ -14,7 +14,7 @@ y-gem is a Cloudflare Worker application that allows users to create and manage 
 - **Database Layer**: 
   - Schema is defined in `src/db/schema.ts`.
   - Data access is decoupled: `src/api/db.ts` implements a REST API for DB operations, and `src/api/client.ts` provides a TypeScript client (`DbClient`) to interact with that API.
-- **Session Management**: Uses JWTs stored in cookies, synchronized with a `sessions` table in D1.
+- **Session Management**: Uses raw UUIDv4 session IDs stored securely in cookies, synchronized with a `sessions` table in D1.
 - **API Access**: Supports API tokens for authenticated external requests.
 
 ## Key Features
@@ -73,7 +73,7 @@ This project requires the following environment bindings and variables to be con
 ### Secrets / Environment Variables
 - **`GOOGLE_CLIENT_ID`**: Your Google OAuth 2.0 Client ID.
 - **`GOOGLE_CLIENT_SECRET`**: Your Google OAuth 2.0 Client Secret.
-- **`COOKIE_SECRET`**: A secret string used to sign the JSON Web Tokens (JWT) for user sessions stored in cookies.
+- **`COOKIE_SECRET`**: A secret string used as an internal token to secure requests to the internal database API.
 - **`GOOGLE_API_KEY`**: Your Google AI API key for GenAI model access.
 
 *Note: For local development, `COOKIE_SECRET` can be defined in `wrangler.jsonc` under `vars`. `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` should be provided as secrets (e.g., using `.dev.vars` locally or `npx wrangler secret put` for production).*
