@@ -397,7 +397,7 @@ export const ChatPage = (data: {
           const res = await fetch('/ai-bots/${bot.id}/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ history })
+            body: JSON.stringify({ prompt: text })
           });
 
           if (!res.ok) {
