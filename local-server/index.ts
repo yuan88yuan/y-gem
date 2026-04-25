@@ -169,9 +169,9 @@ app.get('/local-bot/:id', async (req, res) => {
 
 app.post('/ai-bots/:id/chat', async (req, res) => {
     const botId = req.params.id;
-    const history = req.body.history || [];
+    const prompt = req.body.prompt || '';
 
-    // console.log(`[Local Server] Intercepted message for bot ${botId}:`, history[history.length - 1]);
+    // console.log(`[Local Server] Intercepted message for bot ${botId}:`, prompt);
 
     try {
         const remoteBot = await remoteFetch(`/api/bots/${botId}`);
@@ -184,8 +184,8 @@ app.post('/ai-bots/:id/chat', async (req, res) => {
             contents.push({ role: 'model', parts: [{ text: 'Understood.' }] });
         }
 
-        for (const msg of history) {
-            contents.push({ role: msg.role, parts: [{ text: msg.text }] });
+        if (prompt) {
+            contents.push({ role: 'user', parts: [{ text: prompt }] });
         }
 
         const ai = new GoogleGenAI({ apiKey: process.env.GOOGLE_API_KEY });
