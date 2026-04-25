@@ -253,7 +253,7 @@ app.post('/ai-bots/:id/chat', async (c) => {
     }
 
     const body = await c.req.json()
-    const history = body.history || []
+    const prompt = body.prompt || ''
 
     const contents: any[] = []
 
@@ -262,8 +262,8 @@ app.post('/ai-bots/:id/chat', async (c) => {
       contents.push({ role: 'model', parts: [{ text: 'Understood.' }] })
     }
 
-    for (const msg of history) {
-      contents.push({ role: msg.role, parts: [{ text: msg.text }] })
+    if (prompt) {
+      contents.push({ role: 'user', parts: [{ text: prompt }] })
     }
 
     const ai = new GoogleGenAI({ apiKey: c.env.GOOGLE_API_KEY })
